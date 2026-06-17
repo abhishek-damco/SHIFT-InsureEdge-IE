@@ -1,0 +1,68 @@
+# SHIFT Project Configuration
+# Copy this file to a new Project-<Customer>/ directory and fill in the values.
+# This is the ONLY file that differs between engagements.
+# All agents, skills, and governance rules are loaded from SHIFT-Platform/ unchanged.
+
+# ── ENGAGEMENT IDENTITY ─────────────────────────────────────────────────────
+projectId:        INSUREEDGE-2026            # Used as the ID prefix for all EV-, FND-, ASM-, etc.
+                                              # Example: ACME-HR-2026
+projectName:      "InsureEdge Application Modernization"
+sourcePlatform:   OutSystems                  # OutSystems | .NET | Java | SaaS | Other
+
+# ── PATHS (relative to this file's directory) ───────────────────────────────
+inputRoot:        ./Inputs
+outputRoot:       ./Outputs
+registryRoot:     ./Outputs/_registry
+
+# ── PLATFORM VERSION ─────────────────────────────────────────────────────────
+# Record which version of SHIFT-Platform this engagement uses.
+# Edit the platform only via a versioned change that applies to all engagements.
+platformVersion:  "1.0"
+
+# ── GOVERNANCE TUNING ────────────────────────────────────────────────────────
+# These override the Layer 0 §3 defaults for THIS project only.
+# Remove a line to inherit the Layer 0 default.
+gateThresholds:
+  discoverToScan:  60      # MRS required to pass DISCOVER exit gate
+  prdGate:         75      # MRS required + zero blocking doubts for PRD gate
+  archGate:        80      # MRS required for Architecture gate
+
+# Category weights for MRS computation (Layer 0 §3).
+# Sum does not need to equal any specific value — weights are relative.
+categoryWeights:
+  data:     5              # Data (schema/ERD)
+  logic:    5              # Logic (actions/workflows/rules)
+  ui:       4              # Screens/UI
+  api:      4              # API/Integration
+  security: 4              # Security
+  runtime:  2              # Runtime/behavioral
+  design:   1              # Design system
+
+# Number of open blocking doubts that trigger an early Clarification Round
+# (before the phase exit checklist). Layer 0 §6 default is 3.
+clarificationFlushAt: 3
+
+# ── HUMAN DECISIONS ──────────────────────────────────────────────────────────
+# Engagement-specific human decisions are appended here as DEC- entries
+# by the Chief Orchestrator as the engagement progresses.
+decisions: []
+# Example entry (added by Chief Orchestrator):
+# - id: CHANGE-ME-DEC-0-0001
+#   phase: DISCOVER
+#   decidedBy: human
+#   statement: "Engagement started. Project Context bound."
+#   rationale: "Initial engagement kickoff."
+#   resolves: []
+#   timestamp: "YYYY-MM-DDTHH:MM:SSZ"
+
+# ── TECHNOLOGY STACK CHOICES ─────────────────────────────────────────────────
+# These are populated by the human during IDEATE, recorded as DEC- entries.
+# DO NOT pre-fill these — stack choices are RED (customer-owned, Layer 0 §8).
+# They are listed here as a reference for what choices will be needed.
+stackChoices:
+  frontend:        null    # e.g., React, Angular, Vue, Blazor
+  backend:         null    # e.g., .NET 8, Node.js, Java Spring, Python FastAPI
+  database:        null    # e.g., PostgreSQL, SQL Server, MySQL, CosmosDB
+  cloudProvider:   null    # e.g., Azure, AWS, GCP, on-premise
+  identityProvider: null   # e.g., Azure AD / Entra ID, Auth0, Okta, Cognito
+  cicd:            null    # e.g., Azure DevOps, GitHub Actions, GitLab CI
