@@ -1,0 +1,14 @@
+Hudson Bailey InsureEdge — Welcome!
+
+Welcome, {{NAME}}!
+
+Your administrator has created an InsureEdge account for you. To get started, follow the link below to set up your password and activate your account.
+
+{{SETUP_URL}}
+
+This setup link is valid for 24 hours. If you need assistance, contact your administrator at {{ADMIN_EMAIL}}.
+
+Looking forward to having you on board.
+
+---
+This is an automated message from Hudson Bailey InsureEdge. Please do not reply to this email.

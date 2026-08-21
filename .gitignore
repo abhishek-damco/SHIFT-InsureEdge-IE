@@ -1,0 +1,23 @@
+# Node
+node_modules/
+dist/
+.vite/
+*.log
+
+# .NET build output
+bin/
+obj/
+
+# Environment / secrets
+.env
+!.env.example
+
+# IDE
+.vs/
+*.user
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
