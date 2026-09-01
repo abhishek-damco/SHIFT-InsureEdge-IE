@@ -88,6 +88,8 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
             ("effectiveDate", _) => joined.OrderByDescending(x => x.Policy.EffectiveDate),
             ("premiumEstimate", "asc") => joined.OrderBy(x => x.Coverage != null ? x.Coverage.CalculatedPremium : null),
             ("premiumEstimate", _) => joined.OrderByDescending(x => x.Coverage != null ? x.Coverage.CalculatedPremium : null),
+            ("createdAt", "asc") => joined.OrderBy(x => x.Policy.QuoteCreationDate).ThenBy(x => x.Policy.CreatedOn),
+            ("createdAt", _) => joined.OrderByDescending(x => x.Policy.QuoteCreationDate).ThenByDescending(x => x.Policy.CreatedOn),
             ("approvalStatus", "asc") => joined.OrderBy(x => x.Policy.ApprovalStatus),
             ("approvalStatus", _) => joined.OrderByDescending(x => x.Policy.ApprovalStatus),
             ("lastUpdated", "asc") => joined.OrderBy(x => x.Policy.UpdatedOn),
@@ -96,8 +98,10 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
             ("status", _) => joined.OrderByDescending(x => x.Policy.PolicyStatus),
             ("id", "asc") => joined.OrderBy(x => x.Policy.QuoteNumber),
             ("id", _) => joined.OrderByDescending(x => x.Policy.QuoteNumber),
-            (_, "asc") => joined.OrderBy(x => x.Policy.QuoteNumber),
-            _ => joined.OrderByDescending(x => x.Policy.QuoteNumber),
+            // The register opens with the most recently created quote first. Quote numbers
+            // are randomly allocated, so they do not represent creation order.
+            (_, "asc") => joined.OrderBy(x => x.Policy.QuoteCreationDate).ThenBy(x => x.Policy.CreatedOn),
+            _ => joined.OrderByDescending(x => x.Policy.QuoteCreationDate).ThenByDescending(x => x.Policy.CreatedOn),
         };
 
         var rows = await joined

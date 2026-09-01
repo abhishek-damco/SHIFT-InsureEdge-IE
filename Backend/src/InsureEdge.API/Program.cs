@@ -102,10 +102,6 @@ builder.Services.AddScoped<InsureEdge.Infrastructure.Services.IntermediaryScreen
 builder.Services.AddScoped<AutoRenewalTimerJob>();
 builder.Services.AddHostedService<AutoRenewalHostedService>();
 
-// --- Background Jobs (Timer equivalent to OutSystems BPT) ---
-builder.Services.AddScoped<AutoRenewalTimerJob>();
-builder.Services.AddHostedService<AutoRenewalHostedService>();
-
 // --- Infrastructure ---
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();

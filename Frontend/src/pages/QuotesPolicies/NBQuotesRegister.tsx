@@ -28,6 +28,7 @@ type ColVisibility = Record<ColKey, boolean>;
 type Quote = NbQuoteListItemDto;
 type Kpis = NbQuotesKpiDto;
 interface SortState { col: string; dir: 'asc' | 'desc'; }
+const DATE_COLUMNS = new Set(['effectiveDate', 'createdAt', 'lastUpdated']);
 
 // Filter types
 type CondOp =
@@ -399,6 +400,11 @@ export default function NBQuotesRegister({ insuredType }: { insuredType: string 
       const d = dir === 'asc' ? 1 : -1;
       r = [...r].sort((a, b) => {
         const av = a[col as keyof Quote], bv = b[col as keyof Quote];
+        if (DATE_COLUMNS.has(col)) {
+          const at = av ? Date.parse(String(av)) : Number.NEGATIVE_INFINITY;
+          const bt = bv ? Date.parse(String(bv)) : Number.NEGATIVE_INFINITY;
+          return d * (at - bt);
+        }
         if (typeof av === 'number' && typeof bv === 'number')
           return d * ((av ?? -1) - (bv ?? -1));
         return d * String(av ?? '').localeCompare(String(bv ?? ''));
