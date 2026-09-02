@@ -147,10 +147,15 @@ builder.Services.AddEndpointsApiExplorer();
 // --- CORS (allow frontend dev server) ---
 builder.Services.AddCors(opts =>
     opts.AddDefaultPolicy(p =>
-        p.WithOrigins("http://localhost:3000", "https://localhost:3000", "http://localhost:3001", "https://localhost:3001")
-         .AllowAnyHeader()
-         .AllowAnyMethod()
-         .AllowCredentials())); // credentials required for cookie auth
+        p.WithOrigins(
+            "http://localhost:3000",
+            "https://localhost:3000",
+            "http://localhost:3001",
+            "https://localhost:3001",
+            "https://insureedge-frontend.onrender.com")
+          .AllowAnyHeader()
+          .AllowAnyMethod()
+          .AllowCredentials())); // credentials required for cookie auth
 
 var app = builder.Build();
 
