@@ -58,7 +58,10 @@ export default function SearchableSelect({ options, value, onChange, placeholder
               />
             </div>
           </div>
-          <div className="max-h-48 overflow-y-auto">
+          <div
+            className="max-h-48 overflow-y-auto"
+            style={{ display: 'flex', flexDirection: 'column', maxHeight: 192, overflowY: 'auto' }}
+          >
             {filtered.length === 0 && (
               <p className="px-3 py-3 text-xs text-gray-400 text-center">No options found</p>
             )}
@@ -70,6 +73,7 @@ export default function SearchableSelect({ options, value, onChange, placeholder
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${
                   o.value === value ? 'text-blue-600 font-medium' : 'text-gray-700'
                 }`}
+                style={{ display: 'block', width: '100%', textAlign: 'left', flexShrink: 0 }}
               >
                 {o.label}
               </button>

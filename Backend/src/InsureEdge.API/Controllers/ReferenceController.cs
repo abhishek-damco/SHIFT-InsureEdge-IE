@@ -80,16 +80,58 @@ public class ReferenceController(InsureEdgeDbContext dbContext, ICurrentTenantSe
     public async Task<IActionResult> GetOfficeLocations()
     {
         var clientId = tenant.ClientId;
-        var rows = await GetConnection().QueryAsync<string>(
-            @"SELECT office_name FROM client_office WHERE client_id = @clientId AND office_name IS NOT NULL ORDER BY office_name",
-            new { clientId });
-        if (!rows.Any())
-        {
-            // fallback: distinct values already stored on users for this client
-            rows = await GetConnection().QueryAsync<string>(
-                @"SELECT DISTINCT office_location FROM user_extended WHERE office_location IS NOT NULL ORDER BY office_location");
-        }
-        return Ok(rows.Select(r => new ReferenceOptionRow { Value = r, Label = r }));
+        var conn = GetConnection();
+        var rows = (await conn.QueryAsync<ReferenceOptionRow>(
+            @"SELECT address_type AS value,
+                     CASE
+                       WHEN NULLIF(BTRIM(address_line1), '') IS NULL THEN address_type
+                       ELSE CONCAT(
+                         address_type, ' - ', address_line1,
+                         CASE
+                           WHEN NULLIF(BTRIM(CONCAT_WS(' ', NULLIF(BTRIM(city), ''), NULLIF(BTRIM(zip_code), ''))), '') IS NULL THEN ''
+                           ELSE CONCAT(', ', CONCAT_WS(' ', NULLIF(BTRIM(city), ''), NULLIF(BTRIM(zip_code), '')))
+                         END)
+                     END AS label
+              FROM client_address
+              WHERE client_id = @clientId
+                AND address_type IS NOT NULL
+              ORDER BY CASE address_type WHEN 'Legal' THEN 0 WHEN 'Mailing' THEN 1 ELSE 2 END, address_type",
+            new { clientId })).ToList();
+
+        // Keep separately configured offices available alongside the client's
+        // Legal/Mailing addresses. The value remains the office name so existing
+        // create/update payloads and persisted user values are unchanged.
+        rows.AddRange(await conn.QueryAsync<ReferenceOptionRow>(
+            @"SELECT office_name AS value,
+                     CASE
+                       WHEN NULLIF(BTRIM(address_line1), '') IS NULL THEN office_name
+                       ELSE CONCAT(
+                         office_name, ' - ', address_line1,
+                         CASE
+                           WHEN NULLIF(BTRIM(CONCAT_WS(' ', NULLIF(BTRIM(city), ''), NULLIF(BTRIM(zip_code), ''))), '') IS NULL THEN ''
+                           ELSE CONCAT(', ', CONCAT_WS(' ', NULLIF(BTRIM(city), ''), NULLIF(BTRIM(zip_code), '')))
+                         END)
+                     END AS label
+              FROM client_office
+              WHERE client_id = @clientId
+                AND office_name IS NOT NULL
+              ORDER BY office_name",
+            new { clientId }));
+
+        // Include any legacy selections not present in the current client setup,
+        // so an existing user's value still displays and can be saved unchanged.
+        rows.AddRange(await conn.QueryAsync<ReferenceOptionRow>(
+            @"SELECT DISTINCT ue.office_location AS value, ue.office_location AS label
+              FROM user_extended ue
+              INNER JOIN ""user"" u ON u.id = ue.user_id
+              WHERE u.client_id = @clientId
+                AND ue.office_location IS NOT NULL
+              ORDER BY ue.office_location",
+            new { clientId }));
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var options = rows.Where(r => !string.IsNullOrWhiteSpace(r.Value) && seen.Add(r.Value)).ToList();
+        return Ok(options);
     }
 
     [HttpGet("office-locations/address")]
@@ -97,18 +139,26 @@ public class ReferenceController(InsureEdgeDbContext dbContext, ICurrentTenantSe
     {
         if (string.IsNullOrWhiteSpace(location))
             return BadRequest(new { error = "location is required" });
-        // Try client_office table first
         var clientId = tenant.ClientId;
-        var row = await GetConnection().QueryFirstOrDefaultAsync(
+        var row = await GetConnection().QueryFirstOrDefaultAsync<OfficeAddressRow>(
+            @"SELECT address_line1, address_line2, country AS country_code, state AS state_code,
+                     city, county, zip_code, latitude, longitude
+              FROM client_address
+              WHERE client_id = @clientId AND address_type = @location
+              LIMIT 1", new { clientId, location });
+        if (row == null)
+        {
+            row = await GetConnection().QueryFirstOrDefaultAsync<OfficeAddressRow>(
             @"SELECT address_line1, address_line2, country AS country_code, state AS state_code,
                      city, county, zip_code, latitude, longitude
               FROM client_office
               WHERE client_id = @clientId AND office_name = @location
               LIMIT 1", new { clientId, location });
+        }
         if (row == null)
         {
             // fallback: use address from user record
-            row = await GetConnection().QueryFirstOrDefaultAsync(
+            row = await GetConnection().QueryFirstOrDefaultAsync<OfficeAddressRow>(
                 @"SELECT address_line1, address_line2, country_code, state_code, city, county, zip_code, latitude, longitude
                   FROM user_extended
                   WHERE office_location = @location AND address_line1 IS NOT NULL
@@ -116,6 +166,19 @@ public class ReferenceController(InsureEdgeDbContext dbContext, ICurrentTenantSe
         }
         if (row == null) return Ok(null);
         return Ok(row);
+    }
+
+    private sealed class OfficeAddressRow
+    {
+        public string? AddressLine1 { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? CountryCode { get; set; }
+        public string? StateCode { get; set; }
+        public string? City { get; set; }
+        public string? County { get; set; }
+        public string? ZipCode { get; set; }
+        public string? Latitude { get; set; }
+        public string? Longitude { get; set; }
     }
 
     [HttpGet("departments")]
