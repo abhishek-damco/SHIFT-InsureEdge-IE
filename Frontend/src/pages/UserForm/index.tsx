@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { usersApi, referenceApi } from '../../api/users';
+import { usersApi, referenceApi, sanitizePermissions } from '../../api/users';
 import type { CountryRow, StateRow, GroupRow, ManagerRow, OptionRow, ModuleRow, PermissionInput } from '../../types/User';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import PermissionsGrid from './PermissionsGrid';
@@ -154,12 +154,12 @@ export default function UserForm() {
     referenceApi.officeLocations().then(setOfficeOpts).catch(() => {});
     referenceApi.modules().then(data => {
       setModules(data);
-      setPermissions(data.flatMap(m => m.screens.map(s => ({
+      setPermissions(sanitizePermissions(data.flatMap(m => m.screens.map(s => ({
         screenId: s.id,
         isViewPermission: false, isCreatePermission: false, isEditPermission: false,
         isDuplicatePermission: false, isUploadPermission: false, isDownloadPermission: false,
         isViewSensitiveInfo: false, isAccessSensitiveDoc: false, isApproveReject: false, allAccess: false,
-      }))));
+      })))));
     }).catch(() => {});
   }, []);
 
@@ -189,7 +189,7 @@ export default function UserForm() {
           ].every(Boolean);
           map.set(r.screenId, merged);
         }
-        return Array.from(map.values());
+        return sanitizePermissions(Array.from(map.values()));
       });
       setPermissionsFromGroup(true);
     }).catch(() => {});

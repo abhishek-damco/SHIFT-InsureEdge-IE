@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import type { ModuleRow, PermissionInput } from '../../types/User'
+import { sanitizePermissions } from '../../api/users'
 
 const PERM_COLS = [
   { key: 'isViewPermission',      label: 'View' },
@@ -65,7 +66,7 @@ export default function PermissionsGrid({ modules, permissions, onChange, readOn
     const current = getPerm(screenId)
     const updated = { ...current, [key]: val }
     updated.allAccess = PERM_COLS.every(c => updated[c.key])
-    onChange(permissions.filter(p => p.screenId !== screenId).concat(updated))
+    onChange(sanitizePermissions(permissions.filter(p => p.screenId !== screenId).concat(updated)))
   }
 
   function applyToModule(moduleId: number, builder: (id: number) => PermissionInput) {
@@ -74,7 +75,7 @@ export default function PermissionsGrid({ modules, permissions, onChange, readOn
     const screenIds = new Set(mod.screens.map(s => s.id))
     const updated = permissions.filter(p => !screenIds.has(p.screenId))
     for (const s of mod.screens) updated.push(builder(s.id))
-    onChange(updated)
+    onChange(sanitizePermissions(updated))
   }
 
   function toggleModule(moduleId: number) {

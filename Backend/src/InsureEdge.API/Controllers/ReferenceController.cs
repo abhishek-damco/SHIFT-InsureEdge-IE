@@ -192,15 +192,14 @@ public class ReferenceController(InsureEdgeDbContext dbContext, ICurrentTenantSe
     [HttpGet("groups/{groupId}/permissions")]
     public async Task<IActionResult> GetGroupPermissions(int groupId)
     {
-        var rows = await GetConnection().QueryAsync(
-            @"SELECT us.screen_id, us.is_view_permission, us.is_create_permission, us.is_edit_permission,
-                     us.is_duplicate_permission, us.is_upload_permission, us.is_download_permission,
-                     us.is_view_sensitive_info, us.is_access_sensitive_doc, us.is_approve_reject
-              FROM user_screen us
-              INNER JOIN group_user gu ON gu.user_id = us.user_id
-              WHERE gu.group_id = @groupId
-              LIMIT 1000",
-            new { groupId });
+        var rows = await GetConnection().QueryAsync<UserPermissionInput>(
+            @"SELECT sp.screen_id, sp.is_view_permission, sp.is_create_permission, sp.is_edit_permission,
+                     sp.is_duplicate_permission, sp.is_upload_permission, sp.is_download_permission,
+                     sp.is_view_sensitive_info, sp.is_access_sensitive_doc, sp.is_approve_reject
+              FROM screen_permissions sp
+              WHERE sp.group_id = @groupId AND sp.client_id = @clientId
+              ORDER BY sp.screen_id",
+            new { groupId, clientId = tenant.ClientId });
         return Ok(rows);
     }
 }
