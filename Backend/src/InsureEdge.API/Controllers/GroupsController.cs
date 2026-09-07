@@ -48,14 +48,20 @@ public class GroupsController : ControllerBase
     }
 
     // US-002: Create group
+    [HttpGet("next-code")]
+    [Permission("USERGROUPPAGE", PermissionType.Add)]
+    public async Task<IActionResult> GetNextCode()
+        => Ok(new { groupCode = await _groups.GetNextGroupCodeAsync() });
+
+    // US-002: Create group
     [HttpPost]
     [Permission("USERGROUPPAGE", PermissionType.Add)]
     public async Task<IActionResult> Create([FromBody] CreateGroupRequest req)
     {
         try
         {
-            var id = await _groups.CreateGroupAsync(req);
-            return CreatedAtAction(nameof(GetById), new { id }, new { id });
+            var group = await _groups.CreateGroupAsync(req);
+            return CreatedAtAction(nameof(GetById), new { id = group.Id }, new { id = group.Id, groupCode = group.GroupCode });
         }
         catch (ValidationException ex)
         {

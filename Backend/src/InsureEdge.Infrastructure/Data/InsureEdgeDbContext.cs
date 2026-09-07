@@ -130,6 +130,7 @@ public class InsureEdgeDbContext : DbContext
             e.ToTable("group");
             e.HasKey(x => x.Id);
             e.Property(x => x.GroupCode).IsRequired().HasMaxLength(10);
+            e.HasIndex(x => new { x.ClientId, x.GroupCode }).IsUnique();
             e.Property(x => x.GroupName).IsRequired().HasMaxLength(200);
             e.Property(x => x.GroupEmailId).HasMaxLength(255);
             e.Property(x => x.GroupLeader).IsRequired();

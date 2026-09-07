@@ -5,6 +5,7 @@ using InsureEdge.Application.DTOs.Group;
 using InsureEdge.Application.Interfaces;
 using InsureEdge.Application.Services;
 using InsureEdge.Domain.Entities;
+using InsureEdge.Domain.Enums;
 using Moq;
 using Xunit;
 
@@ -24,34 +25,54 @@ public class GroupServiceTests
     }
 
     [Fact]
-    public async Task CreateGroup_AssignsZeroPaddedFourDigitCode()
+    public async Task GetNextGroupCode_ReturnsZeroPaddedFourDigitPreview()
     {
         // BR-001: seq=5 → "0005"
         _repo.Setup(r => r.GetNextGroupSequenceAsync(1)).ReturnsAsync(5);
-        _repo.Setup(r => r.CreateAsync(It.IsAny<Group>(), It.IsAny<List<long>>(), It.IsAny<List<ScreenPermissionSaveDto>>()))
-             .ReturnsAsync((Group g, List<long> _, List<ScreenPermissionSaveDto> _) => { g.Id = 99; return g; });
+        var code = await _svc.GetNextGroupCodeAsync();
 
-        var req = new CreateGroupRequest("Test Group", 100, "test@example.com", "desc", false, false,
-            new List<long>(), new List<ScreenPermissionSaveDto>());
-        var id = await _svc.CreateGroupAsync(req);
-
-        _repo.Verify(r => r.CreateAsync(
-            It.Is<Group>(g => g.GroupCode == "0005"), It.IsAny<List<long>>(), It.IsAny<List<ScreenPermissionSaveDto>>()),
-            Times.Once);
-        id.Should().Be(99);
+        code.Should().Be("0005");
     }
 
     [Fact]
-    public async Task CreateGroup_SequenceOf1000_GivesCode1000()
+    public async Task GetNextGroupCode_SequenceOf1000_GivesCode1000()
     {
         _repo.Setup(r => r.GetNextGroupSequenceAsync(1)).ReturnsAsync(1000);
+        var code = await _svc.GetNextGroupCodeAsync();
+
+        code.Should().Be("1000");
+    }
+
+    [Fact]
+    public async Task CreateGroup_ReturnsRepositoryAssignedCode()
+    {
         _repo.Setup(r => r.CreateAsync(It.IsAny<Group>(), It.IsAny<List<long>>(), It.IsAny<List<ScreenPermissionSaveDto>>()))
-             .ReturnsAsync((Group g, List<long> _, List<ScreenPermissionSaveDto> _) => g);
+             .ReturnsAsync((Group g, List<long> _, List<ScreenPermissionSaveDto> _) =>
+             {
+                 g.AssignGeneratedCode("0005");
+                 g.Id = 99;
+                 return g;
+             });
 
-        var req = new CreateGroupRequest("G", 1, null, null, false, false, [], []);
-        await _svc.CreateGroupAsync(req);
+        var req = new CreateGroupRequest("Test Group", 100, "test@example.com", "desc", false, false,
+            new List<long>(), new List<ScreenPermissionSaveDto>());
+        var group = await _svc.CreateGroupAsync(req);
 
-        _repo.Verify(r => r.CreateAsync(It.Is<Group>(g => g.GroupCode == "1000"), It.IsAny<List<long>>(), It.IsAny<List<ScreenPermissionSaveDto>>()), Times.Once);
+        _repo.Verify(r => r.CreateAsync(
+            It.IsAny<Group>(), It.IsAny<List<long>>(), It.IsAny<List<ScreenPermissionSaveDto>>()),
+            Times.Once);
+        group.Id.Should().Be(99);
+        group.GroupCode.Should().Be("0005");
+    }
+
+    [Fact]
+    public void UpdateGroupInfo_DoesNotChangeExistingGroupCode()
+    {
+        var group = Group.Create("0005", "Original", null, 1, null, false, 1, 100);
+
+        group.UpdateInfo("Updated", "updated@example.com", 2, "Changed", GroupStatus.Inactive, 101);
+
+        group.GroupCode.Should().Be("0005");
     }
 
     [Fact]

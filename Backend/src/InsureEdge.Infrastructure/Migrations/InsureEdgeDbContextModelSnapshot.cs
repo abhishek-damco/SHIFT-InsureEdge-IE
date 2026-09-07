@@ -1458,6 +1458,10 @@ namespace InsureEdge.Infrastructure.Migrations
                     b.HasIndex("ClientId")
                         .HasDatabaseName("ix_group_client_id");
 
+                    b.HasIndex("ClientId", "GroupCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_group_client_id_group_code");
+
                     b.ToTable("group", (string)null);
                 });
 

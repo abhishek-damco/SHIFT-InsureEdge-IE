@@ -144,6 +144,19 @@ label {
   margin-bottom: 20px;
 }
 
+.add-group-top-grid {
+  grid-template-columns: minmax(0, 1.85fr) minmax(280px, 1fr);
+  gap: 0;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 760px) {
+  .add-group-top-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+
 .app-card {
   background: #fff;
   border: 1px solid var(--color-gray-200);

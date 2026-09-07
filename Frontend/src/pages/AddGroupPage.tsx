@@ -1,6 +1,6 @@
 // US-002: Add new group — 3-panel form: Group Info + Members + Permission Matrix
 // VR-001..VR-004: inline validation before submit
-// BR-001: GroupCode auto-assigned by backend (not shown on create)
+// BR-001: GroupCode previewed on create and authoritatively assigned by backend
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -18,7 +18,7 @@ export default function AddGroupPage() {
 
   const [info, setInfo] = useState<GroupInfoValues>({
     groupName: '', groupLeader: 0, groupEmailId: '',
-    groupDesc: '', isDepartment: false, status: 'Active',
+    groupDesc: '', status: 'Active',
   });
   const [infoErrors, setInfoErrors] = useState<Partial<Record<keyof GroupInfoValues, string>>>({});
   const [memberIds, setMemberIds] = useState<number[]>([]);
@@ -28,6 +28,11 @@ export default function AddGroupPage() {
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
     queryFn: () => authApi.getUsers(),
+  });
+
+  const { data: nextCode } = useQuery({
+    queryKey: ['groups', 'next-code'],
+    queryFn: () => groupsApi.getNextCode(),
   });
 
   // Fetch all screens and convert to ScreenPermissionDto[] (all permissions default false)
@@ -75,7 +80,7 @@ export default function AddGroupPage() {
         groupLeader: info.groupLeader,
         groupEmailId: info.groupEmailId.trim(),
         groupDesc: info.groupDesc.trim(),
-        isDepartment: info.isDepartment,
+        isDepartment: false,
         isInactive: info.status === 'Inactive',
         memberIds,
         permissions,
@@ -92,18 +97,11 @@ export default function AddGroupPage() {
   };
 
   return (
-    <div className="app-page">
-      <div className="page-header">
-        <h1 className="page-title">New Group</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-secondary" onClick={() => navigate('/groups')}>Cancel</button>
-          <button
-            className="btn-primary"
-            onClick={handleSubmit}
-            disabled={createGroup.isPending}
-          >
-            {createGroup.isPending ? 'Creating...' : 'Create Group'}
-          </button>
+    <div className="app-page" style={{ padding: 9 }}>
+      <div style={{ marginBottom: 12 }}>
+        <h1 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#252a31' }}>Add User Group</h1>
+        <div style={{ marginTop: 7, fontSize: 9, color: '#7b8491' }}>
+          User Group Management <span style={{ color: '#252a31' }}>/ Add User Group</span>
         </div>
       </div>
 
@@ -114,12 +112,14 @@ export default function AddGroupPage() {
         </div>
       )}
 
-      <div className="app-section-grid">
+      <div className="app-section-grid add-group-top-grid">
         <GroupInformationPanel
           values={info}
           onChange={(field, value) => setInfo(prev => ({ ...prev, [field]: value }))}
           errors={infoErrors}
           users={users}
+          groupCode={nextCode?.groupCode}
+          showStatus
         />
         <GroupMembersPanel
           selectedIds={memberIds}
@@ -128,12 +128,37 @@ export default function AddGroupPage() {
         />
       </div>
 
-      <div className="card">
-        <h3 style={{ marginBottom: 16, fontSize: 15, fontWeight: 600 }}>Permissions</h3>
+      <div className="card" style={{ padding: 13, border: '1px solid #d9dde4', borderRadius: 6, boxShadow: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Group Rights</h3>
+          <span
+            aria-label="Group rights information"
+            title="Group rights information"
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 14, height: 14, border: '1px solid #252a31', borderRadius: '50%',
+              fontSize: 9, fontWeight: 600, color: '#252a31',
+            }}
+          >i</span>
+        </div>
+        <p style={{ margin: '0 0 13px', fontSize: 11, color: '#252a31' }}>
+          You can grant access to the system module and their sub-module for the user group
+        </p>
         <PermissionMatrix
           permissions={allScreens}
           onChange={setPermissions}
         />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+        <button className="btn-secondary" onClick={() => navigate('/groups')}>Cancel</button>
+        <button
+          className="btn-primary"
+          onClick={handleSubmit}
+          disabled={createGroup.isPending}
+        >
+          {createGroup.isPending ? 'Creating...' : 'Create Group'}
+        </button>
       </div>
     </div>
   );

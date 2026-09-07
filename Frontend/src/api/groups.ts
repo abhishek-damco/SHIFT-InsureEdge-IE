@@ -22,7 +22,10 @@ export const groupsApi = {
     api.get<GroupDetailDto>(`/groups/${id}`).then(r => r.data),
 
   create: (req: CreateGroupRequest) =>
-    api.post<{ id: number }>('/groups', req).then(r => r.data),
+    api.post<{ id: number; groupCode: string }>('/groups', req).then(r => r.data),
+
+  getNextCode: () =>
+    api.get<{ groupCode: string }>('/groups/next-code').then(r => r.data),
 
   updateInfo: (id: number, req: UpdateGroupInfoRequest) =>
     api.patch(`/groups/${id}/info`, req),

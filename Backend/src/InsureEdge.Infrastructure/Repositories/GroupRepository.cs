@@ -116,6 +116,14 @@ public class GroupRepository : IGroupRepository
     public async Task<Group> CreateAsync(Group group, List<long> memberIds, List<ScreenPermissionSaveDto> permissions)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // Serialize code allocation per tenant without consuming a value when the
+        // Add page is merely opened. The unique index remains the final safeguard.
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtext('insuredge.group_code'), hashtext(CAST({group.ClientId} AS text)))");
+        var sequence = await GetNextGroupSequenceAsync(group.ClientId);
+        group.AssignGeneratedCode(sequence.ToString("D4"));
+
         _db.Groups.Add(group);
         await _db.SaveChangesAsync();
 

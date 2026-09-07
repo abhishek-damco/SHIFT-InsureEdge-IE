@@ -46,6 +46,13 @@ public class Group
         };
     }
 
+    public void AssignGeneratedCode(string groupCode)
+    {
+        if (!string.IsNullOrEmpty(GroupCode))
+            throw new InvalidOperationException("Group code has already been assigned.");
+        GroupCode = groupCode;
+    }
+
     public void UpdateInfo(
         string groupName, string? groupEmailId,
         long groupLeader, string? groupDesc,

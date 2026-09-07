@@ -29,15 +29,12 @@ public class GroupService
 
     // US-002: Create group with atomic member + permission save
     // BR-001: GroupCode is sequential 4-digit zero-padded integer
-    public async Task<long> CreateGroupAsync(CreateGroupRequest req)
+    public async Task<Group> CreateGroupAsync(CreateGroupRequest req)
     {
         ValidateGroupInfo(req.GroupName, req.GroupLeader, req.GroupEmailId, req.GroupDesc);
 
-        var seq = await _repo.GetNextGroupSequenceAsync(_tenant.ClientId);
-        var code = seq.ToString("D4");  // BR-001: zero-padded 4-digit
-
         var group = Group.Create(
-            code, req.GroupName, req.GroupEmailId,
+            string.Empty, req.GroupName, req.GroupEmailId,
             req.GroupLeader, req.GroupDesc, req.IsDepartment,
             _tenant.ClientId, _tenant.UserId);
 
@@ -45,9 +42,13 @@ public class GroupService
             group.UpdateInfo(req.GroupName, req.GroupEmailId, req.GroupLeader,
                 req.GroupDesc, GroupStatus.Inactive, _tenant.UserId);
 
-        var saved = await _repo.CreateAsync(group, req.MemberIds, req.Permissions);
-        return saved.Id;
+        return await _repo.CreateAsync(group, req.MemberIds, req.Permissions);
     }
+
+    // Non-consuming preview for the Add Group UI. The authoritative value is
+    // allocated again under a transaction lock when the group is created.
+    public async Task<string> GetNextGroupCodeAsync()
+        => (await _repo.GetNextGroupSequenceAsync(_tenant.ClientId)).ToString("D4");
 
     // US-004/US-007: Edit group info (including status toggle for inactivation)
     public async Task UpdateGroupInfoAsync(long id, UpdateGroupInfoRequest req)

@@ -31,10 +31,10 @@ export default function GroupMembersPanel({ selectedIds, users, onChange, readOn
   const selectedUsers = users.filter(u => selectedIds.includes(u.id));
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600 }}>
-          Members <span style={{ color: 'var(--color-gray-500)', fontWeight: 400 }}>({selectedIds.length})</span>
+    <div className="card" style={{ padding: '12px 13px', border: '1px solid #d9dde4', borderRadius: 6, boxShadow: 'none' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
+          {selectedIds.length} Group Members
         </h3>
       </div>
 
@@ -73,14 +73,29 @@ export default function GroupMembersPanel({ selectedIds, users, onChange, readOn
 
       {!readOnly && (
         <>
-          <input
-            type="text"
-            placeholder="Search users to add..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ marginBottom: 8 }}
-          />
-          <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--color-gray-200)', borderRadius: 6 }}>
+          <div style={{ position: 'relative', marginBottom: search.trim() ? 8 : 0 }}>
+            <svg
+              aria-hidden="true"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#687386"
+              strokeWidth="1.8"
+              style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Enter member name you are looking for"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ height: 27, padding: '5px 9px 5px 31px', borderRadius: 2, fontSize: 11, background: '#f8f9fc' }}
+            />
+          </div>
+          {search.trim() && <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--color-gray-200)', borderRadius: 2 }}>
             {filtered.length === 0 && (
               <div style={{ padding: 16, color: 'var(--color-gray-500)', textAlign: 'center' }}>
                 No users found.
@@ -115,7 +130,7 @@ export default function GroupMembersPanel({ selectedIds, users, onChange, readOn
                 </div>
               );
             })}
-          </div>
+          </div>}
         </>
       )}
     </div>

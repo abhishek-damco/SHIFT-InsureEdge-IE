@@ -152,7 +152,7 @@ function ModuleSection({
   onUpdate: (id: number, field: keyof ScreenPermissionSaveDto, value: boolean) => void;
   onApplyToModule: (builder: (id: number) => ScreenPermissionSaveDto) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
