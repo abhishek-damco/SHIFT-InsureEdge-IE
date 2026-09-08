@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { distributionApi as api } from '../../api/distribution';
+import SearchableSelect from '../../components/ui/SearchableSelect';
+import IntermediaryTypeSelect from './IntermediaryTypeSelect';
+import {
+  INTERMEDIARY_COUNTRIES,
+  US_STATES,
+  includeLegacyValue,
+  jurisdictionOptions,
+  toSelectOptions,
+} from './IntermediaryReferenceData';
 
 const WIZARD_STEPS = [
   { n: 1, l1: 'Add',    l2: 'Intermediary Details' },
@@ -10,17 +19,6 @@ const WIZARD_STEPS = [
 ];
 
 const LEGAL_ENTITY_OPTS = ['Corporation', 'Limited Liability Company', 'Partnership', 'Sole Proprietorship'];
-const INTERMEDIARY_TYPE_OPTS = ['MGA', 'Broker', 'Carrier', 'Agency', 'Brokerage', 'Other'];
-const COUNTRY_OPTS = ['United States', 'Canada', 'United Kingdom'];
-const US_STATES = [
-  'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware',
-  'Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky',
-  'Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi',
-  'Missouri','Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico',
-  'New York','North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania',
-  'Rhode Island','South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont',
-  'Virginia','Washington','West Virginia','Wisconsin','Wyoming',
-];
 
 interface Contact {
   id: string; persistedId?: number; isAlsoProducer: boolean;
@@ -58,8 +56,8 @@ function normalizeCountry(value: string | null | undefined): string {
   return v;
 }
 
-function uniqueOptions(options: string[], current: string): string[] {
-  return current && !options.includes(current) ? [current, ...options] : options;
+function uniqueOptions(options: readonly string[], current: string): string[] {
+  return current && !options.includes(current) ? [current, ...options] : [...options];
 }
 
 async function loadIntermediaryStep1(id: number) {
@@ -209,6 +207,14 @@ export default function AddIntermediaryPage({ onBack, onNext }: { onBack: () => 
   const mainRef = useRef<HTMLDivElement>(null);
 
   const sf = (k: keyof Form, v: unknown) => setForm(p => ({ ...p, [k]: v }));
+
+  function setCountry(countryField: 'country' | 'addrCountry', stateField: 'residentState' | 'addrState', value: string) {
+    setForm(prev => ({
+      ...prev,
+      [countryField]: value,
+      [stateField]: jurisdictionOptions(value).includes(prev[stateField]) ? prev[stateField] : '',
+    }));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -527,18 +533,24 @@ export default function AddIntermediaryPage({ onBack, onNext }: { onBack: () => 
               <div className="fc">
                 <label className="fl"><span className="req">*</span> Type of Intermediary</label>
                 <div className="sw">
-                  <select className={`fs${errors.intermediaryType ? ' fi--err' : ''}`}
-                    value={form.intermediaryType} onChange={e => sf('intermediaryType', e.target.value)}>
-                    <option value="">Select...</option>
-                    {uniqueOptions(INTERMEDIARY_TYPE_OPTS, form.intermediaryType).map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
+                  <IntermediaryTypeSelect
+                    className={`fs${errors.intermediaryType ? ' fi--err' : ''}`}
+                    value={form.intermediaryType}
+                    onChange={value => sf('intermediaryType', value)}
+                  />
                   <span className="sw__arr">▼</span>
                 </div>
                 <Err msg={errors.intermediaryType} />
               </div>
               <div className="fc">
                 <label className="fl"><span className="req">*</span> Country</label>
-                <ClearSelect value={form.country} onChange={v => sf('country', v)} options={uniqueOptions(COUNTRY_OPTS, form.country)} />
+                <SearchableSelect
+                  value={form.country}
+                  onChange={value => setCountry('country', 'residentState', value)}
+                  options={toSelectOptions(INTERMEDIARY_COUNTRIES, form.country)}
+                  placeholder="Search..."
+                  clearable
+                />
                 <Err msg={errors.country} />
               </div>
             </div>
@@ -551,7 +563,7 @@ export default function AddIntermediaryPage({ onBack, onNext }: { onBack: () => 
                   <select className={`fs${errors.residentState ? ' fi--err' : ''}`}
                     value={form.residentState} onChange={e => sf('residentState', e.target.value)}>
                     <option value="">Select...</option>
-                    {uniqueOptions(US_STATES, form.residentState).map(s => <option key={s} value={s}>{s}</option>)}
+                    {includeLegacyValue(jurisdictionOptions(form.country), form.residentState).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   <span className="sw__arr">▼</span>
                 </div>
@@ -606,13 +618,19 @@ export default function AddIntermediaryPage({ onBack, onNext }: { onBack: () => 
             <div className="fg3 fg-mb">
               <div className="fc">
                 <label className="fl"><span className="req">*</span> Country</label>
-                <ClearSelect value={form.addrCountry} onChange={v => sf('addrCountry', v)} options={uniqueOptions(COUNTRY_OPTS, form.addrCountry)} />
+                <SearchableSelect
+                  value={form.addrCountry}
+                  onChange={value => setCountry('addrCountry', 'addrState', value)}
+                  options={toSelectOptions(INTERMEDIARY_COUNTRIES, form.addrCountry)}
+                  placeholder="Search..."
+                  clearable
+                />
                 <Err msg={errors.addrCountry} />
               </div>
               <div className="fc">
                 <label className="fl"><span className="req">*</span> State</label>
                 <ClearSelect value={form.addrState} onChange={v => sf('addrState', v)}
-                  options={uniqueOptions(US_STATES, form.addrState)} placeholder="Select..." />
+                  options={includeLegacyValue(jurisdictionOptions(form.addrCountry), form.addrState)} placeholder="Select..." />
                 <Err msg={errors.addrState} />
               </div>
               <div className="fc">

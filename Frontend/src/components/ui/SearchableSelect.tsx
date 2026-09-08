@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Search } from 'lucide-react'
+import { ChevronDown, Search, X } from 'lucide-react'
 
 interface Option {
   value: string
@@ -12,9 +12,10 @@ interface Props {
   onChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
+  clearable?: boolean
 }
 
-export default function SearchableSelect({ options, value, onChange, placeholder = 'Select...', disabled }: Props) {
+export default function SearchableSelect({ options, value, onChange, placeholder = 'Select...', disabled, clearable = false }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -41,7 +42,28 @@ export default function SearchableSelect({ options, value, onChange, placeholder
         } ${!selected ? 'text-gray-400' : ''}`}
       >
         <span className="truncate">{selected ? selected.label : placeholder}</span>
-        <ChevronDown size={14} className="ml-2 text-gray-400 shrink-0" />
+        <span className="ml-2 flex shrink-0 items-center gap-1">
+          {clearable && value && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Clear selection"
+              onClick={e => { e.stopPropagation(); onChange(''); setSearch('') }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange('');
+                  setSearch('');
+                }
+              }}
+              className="rounded p-0.5 text-gray-500 hover:bg-gray-100"
+            >
+              <X size={14} />
+            </span>
+          )}
+          <ChevronDown size={14} className="text-gray-400" />
+        </span>
       </button>
       {open && (
         <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">

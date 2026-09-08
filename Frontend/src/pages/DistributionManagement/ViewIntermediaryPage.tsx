@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import type { IntermediaryRecord } from '../../types/Distribution';
 import { distributionApi as api } from '../../api/distribution';
+import SearchableSelect from '../../components/ui/SearchableSelect';
 import BulkUploadModal from './BulkUploadModal';
+import IntermediaryTypeSelect from './IntermediaryTypeSelect';
+import {
+  INTERMEDIARY_COUNTRIES,
+  includeLegacyValue,
+  jurisdictionOptions,
+  toSelectOptions,
+} from './IntermediaryReferenceData';
+import { SPECIALTY_INSURANCE_TYPE } from './ProductReferenceData';
 
 interface ViewIntermediaryPageProps {
   record: IntermediaryRecord;
@@ -82,7 +91,6 @@ function DetailsTab({ record, onRecordChange }: {
   onRecordChange: (r: IntermediaryRecord) => void;
 }) {
   const legalEntityOpts     = useDropdown('LEGALENTITY');
-  const intermediaryTypeOpts = useDropdown('INTERMEDIARYTYPE');
 
   const [editPrimary, setEditPrimary] = useState(false);
   const [primForm, setPrimForm] = useState<any>({ status: record.status !== 'Inactive' });
@@ -307,6 +315,21 @@ function DetailsTab({ record, onRecordChange }: {
 
   function fp(k: string) { return (v: string) => setPrimForm((p: any) => ({ ...p, [k]: v })); }
   function fa(k: string) { return (v: string) => setAddrForm((p: any) => ({ ...p, [k]: v })); }
+  function setCountry(target: 'primary' | 'address', value: string) {
+    if (target === 'primary') {
+      setPrimForm((prev: any) => ({
+        ...prev,
+        country: value,
+        residentState: jurisdictionOptions(value).includes(prev.residentState) ? prev.residentState : '',
+      }));
+      return;
+    }
+    setAddrForm((prev: any) => ({
+      ...prev,
+      addrCountry: value,
+      addrState: jurisdictionOptions(value).includes(prev.addrState) ? prev.addrState : '',
+    }));
+  }
 
   return (
     <div>
@@ -463,20 +486,27 @@ function DetailsTab({ record, onRecordChange }: {
                     </div>
                     <div className="vi-field">
                       <span className="vi-label">* Type of Intermediary</span>
-                      <select className="vi-select" value={primForm.intermediaryType || ''} onChange={e => fp('intermediaryType')(e.target.value)}>
-                        <option value="">Select…</option>
-                        {intermediaryTypeOpts.map(t => <option key={t}>{t}</option>)}
-                      </select>
+                      <IntermediaryTypeSelect
+                        className="vi-select"
+                        value={primForm.intermediaryType || ''}
+                        onChange={fp('intermediaryType')}
+                      />
                     </div>
                     <div className="vi-field">
                       <span className="vi-label">* Country</span>
-                      <input className="vi-input" value={primForm.country || ''} onChange={e => fp('country')(e.target.value)} />
+                      <SearchableSelect
+                        value={primForm.country || ''}
+                        onChange={value => setCountry('primary', value)}
+                        options={toSelectOptions(INTERMEDIARY_COUNTRIES, primForm.country || '')}
+                        placeholder="Search..."
+                        clearable
+                      />
                     </div>
                     <div className="vi-field">
                       <span className="vi-label">* Resident State</span>
                       <select className="vi-select" value={primForm.residentState || ''} onChange={e => fp('residentState')(e.target.value)}>
                         <option value="">Select…</option>
-                        {US_STATES.map(s => <option key={s}>{s}</option>)}
+                        {includeLegacyValue(jurisdictionOptions(primForm.country || ''), primForm.residentState || '').map(s => <option key={s}>{s}</option>)}
                       </select>
                     </div>
                     <div className="vi-field">
@@ -580,13 +610,19 @@ function DetailsTab({ record, onRecordChange }: {
                   </div>
                   <div className="vi-field">
                     <span className="vi-label">Country</span>
-                    <input className="vi-input" value={addrForm.addrCountry || ''} onChange={e => fa('addrCountry')(e.target.value)} />
+                    <SearchableSelect
+                      value={addrForm.addrCountry || ''}
+                      onChange={value => setCountry('address', value)}
+                      options={toSelectOptions(INTERMEDIARY_COUNTRIES, addrForm.addrCountry || '')}
+                      placeholder="Search..."
+                      clearable
+                    />
                   </div>
                   <div className="vi-field">
                     <span className="vi-label">State</span>
                     <select className="vi-select" value={addrForm.addrState || ''} onChange={e => fa('addrState')(e.target.value)}>
                       <option value="">Select…</option>
-                      {US_STATES.map(s => <option key={s}>{s}</option>)}
+                      {includeLegacyValue(jurisdictionOptions(addrForm.addrCountry || ''), addrForm.addrState || '').map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                   <div className="vi-field">
@@ -1003,7 +1039,6 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
 }) {
   const lobs        = useProducts(false);
   const subProds    = useProducts(true);
-  const insurTypes  = useDropdown('INSURANCETYPE');
 
   const [rows, setRows] = useState<any[]>([]);
 
@@ -1019,6 +1054,16 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
   const [editTarget,      setEditTarget]      = useState<any | null>(null);
   const [deleteTarget,    setDeleteTarget]    = useState<any | null>(null);
   const [form, setForm] = useState({ ...EMPTY_PROD_FORM });
+  const insurTypes = includeLegacyValue([SPECIALTY_INSURANCE_TYPE], form.insuranceType);
+  const availableLobs = lobs
+    .filter((product: any) => product.product_type === form.insuranceType || Number(product.id) === Number(form.lineOfBusinessId))
+    .filter((product: any, index: number, products: any[]) =>
+      products.findIndex(candidate => candidate.product_name === product.product_name) === index);
+  const availableSubProducts = subProds
+    .filter((product: any) => Number(product.parent_product_id) === Number(form.lineOfBusinessId)
+      || Number(product.id) === Number(form.subProductId))
+    .filter((product: any, index: number, products: any[]) =>
+      products.findIndex(candidate => candidate.product_name === product.product_name) === index);
 
   function lobName(id: any): string {
     if (!id) return '—';
@@ -1137,7 +1182,17 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
     }
   }
 
-  function ff(k: string) { return (v: string) => setForm(p => ({ ...p, [k]: v })); }
+  function ff(k: string) {
+    return (v: string) => setForm(p => {
+      const next = { ...p, [k]: v };
+      if (k === 'insuranceType') {
+        next.lineOfBusinessId = '';
+        next.subProductId = '';
+      }
+      if (k === 'lineOfBusinessId') next.subProductId = '';
+      return next;
+    });
+  }
 
   return (
     <div className="vi-products-layout" style={{ gridTemplateColumns: panelCollapsed ? '1fr' : '220px 1fr' }}>
@@ -1248,7 +1303,7 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
                   <select className="vi-select" value={form.lineOfBusinessId}
                     onChange={e => ff('lineOfBusinessId')(e.target.value)}>
                     <option value="">Select…</option>
-                    {lobs.map(l => <option key={l.id} value={l.id}>{l.product_name}</option>)}
+                    {availableLobs.map(l => <option key={l.id} value={l.id}>{l.product_name}</option>)}
                   </select>
                 </div>
               </div>
@@ -1258,7 +1313,7 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
                   <select className="vi-select" value={form.subProductId}
                     onChange={e => ff('subProductId')(e.target.value)}>
                     <option value="">Select…</option>
-                    {subProds.map(s => <option key={s.id} value={s.id}>{s.product_name}</option>)}
+                    {availableSubProducts.map(s => <option key={s.id} value={s.id}>{s.product_name}</option>)}
                   </select>
                 </div>
                 <div className="vi-form-field">

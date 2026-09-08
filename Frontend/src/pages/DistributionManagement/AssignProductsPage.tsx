@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { distributionApi as api } from '../../api/distribution';
+import { SEEDED_SPECIALTY_PRODUCTS, SPECIALTY_INSURANCE_TYPE } from './ProductReferenceData';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -10,28 +11,6 @@ const WIZARD_STEPS = [
   { n: 4, l1: 'Add',    l2: 'Producers'            },
   { n: 5, l1: 'Review', l2: 'and Submit'           },
 ];
-
-const INSURANCE_TYPES = ['Specialty Lines', 'Admitted Lines', 'Non-Admitted Lines'];
-
-const LOB_BY_TYPE: Record<string, string[]> = {
-  'Specialty Lines':    ['E&S Homeowners', 'E&S Commercial', 'E&S Auto', 'E&S Marine'],
-  'Admitted Lines':     ['Homeowners', 'Auto', 'Commercial Property', 'General Liability'],
-  'Non-Admitted Lines': ['Excess Liability', 'Umbrella', 'Surplus Lines'],
-};
-
-const SUB_BY_LOB: Record<string, string[]> = {
-  'E&S Homeowners':        ['SuperPerils', 'HomePlus', 'BasicCover'],
-  'E&S Commercial':        ['CommercialPlus', 'BizCover'],
-  'E&S Auto':              ['AutoPremium', 'FleetCover'],
-  'E&S Marine':            ['MarinePlus'],
-  'Homeowners':            ['Standard', 'Premier'],
-  'Auto':                  ['Personal Auto', 'Commercial Auto'],
-  'Commercial Property':   ['Building', 'Contents', 'Business Interruption'],
-  'General Liability':     ['Occurrence', 'Claims-Made'],
-  'Excess Liability':      ['Follow Form', 'Standalone'],
-  'Umbrella':              ['Personal', 'Commercial'],
-  'Surplus Lines':         ['Specialty Risk'],
-};
 
 const US_STATES = [
   'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware',
@@ -492,8 +471,13 @@ function ProductModal({ initial, onSave, onClose, products = [] }: {
 
   const parentProds = products.filter(p => !p.is_sub_product && p.is_active !== false);
   const subProds    = products.filter(p =>  p.is_sub_product && p.is_active !== false);
-  const apiInsuranceTypes = [...new Set(parentProds.map((p: any) => p.product_type).filter(Boolean))] as string[];
-  const insuranceTypeOpts = apiInsuranceTypes.length > 0 ? apiInsuranceTypes : INSURANCE_TYPES;
+  const apiInsuranceTypes = [...new Set(parentProds
+    .filter((p: any) => p.product_type === SPECIALTY_INSURANCE_TYPE)
+    .map((p: any) => p.product_type)
+    .filter(Boolean))] as string[];
+  const insuranceTypeOpts = initial?.insuranceType && !apiInsuranceTypes.includes(initial.insuranceType)
+    ? [initial.insuranceType, ...apiInsuranceTypes]
+    : apiInsuranceTypes;
 
   function sf(field: keyof ModalForm, value: string | string[]) {
     setForm(prev => {
@@ -519,17 +503,18 @@ function ProductModal({ initial, onSave, onClose, products = [] }: {
   }
 
   const lobOptions = form.insuranceType
-    ? (parentProds.length > 0
-        ? parentProds.filter((p: any) => p.product_type === form.insuranceType).map((p: any) => p.product_name as string)
-        : (LOB_BY_TYPE[form.insuranceType] ?? []))
+    ? [...new Set(parentProds
+        .filter((p: any) => p.product_type === form.insuranceType || (initial?.lineOfBusiness && p.product_name === initial.lineOfBusiness))
+        .map((p: any) => p.product_name as string))]
     : [];
   const subOptions = form.lineOfBusiness
-    ? (subProds.length > 0
-        ? (() => {
-            const parent = parentProds.find((p: any) => p.product_name === form.lineOfBusiness);
-            return parent ? subProds.filter((s: any) => s.parent_product_id === parent.id).map((s: any) => s.product_name as string) : [];
-          })()
-        : (SUB_BY_LOB[form.lineOfBusiness] ?? []))
+    ? (() => {
+        const parent = parentProds.find((p: any) => p.product_name === form.lineOfBusiness);
+        const options = parent
+          ? [...new Set(subProds.filter((s: any) => s.parent_product_id === parent.id).map((s: any) => s.product_name as string))]
+          : [];
+        return initial?.subProduct && !options.includes(initial.subProduct) ? [initial.subProduct, ...options] : options;
+      })()
     : [];
 
   return (
@@ -625,7 +610,7 @@ export default function AssignProductsPage({ onBack, onNext }: { onBack: () => v
     } catch { /* ignore */ }
     return [];
   });
-  const [allProducts,      setAllProducts]      = useState<any[]>([]);
+  const [allProducts,      setAllProducts]      = useState<any[]>([...SEEDED_SPECIALTY_PRODUCTS]);
   const [clientCompanies,  setClientCompanies]  = useState<string[]>([]);
   const [selectedCompany,  setSelectedCompany]  = useState('');
   const [sidebarCollapsed, setSidebarCollapsed]  = useState(false);
@@ -648,7 +633,13 @@ export default function AssignProductsPage({ onBack, onNext }: { onBack: () => v
   const [sortDir,          setSortDir]           = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
-    api.products.list().then(setAllProducts).catch(() => {});
+    Promise.all([api.products.list(false), api.products.list(true)])
+      .then(([products, subProducts]) => setAllProducts([
+        ...products,
+        ...subProducts,
+        ...SEEDED_SPECIALTY_PRODUCTS,
+      ]))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

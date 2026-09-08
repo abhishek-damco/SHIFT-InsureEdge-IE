@@ -174,6 +174,49 @@ public class DistributionController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("products")]
+    public async Task<IActionResult> GetProducts([FromQuery(Name = "is_sub_product")] bool? isSubProduct)
+    {
+        const string specialtyLabel = "Specialty Lines";
+
+        if (isSubProduct == true)
+        {
+            var subProducts = await _db.InsuranceSubProducts
+                .AsNoTracking()
+                .Where(p => p.Product != null && p.Product.IsActive)
+                .OrderBy(p => p.SubProductName)
+                .Select(p => new
+                {
+                    id = p.Id,
+                    product_name = p.SubProductName,
+                    product_type = p.Product!.Category == "Specialty" ? specialtyLabel : p.Product.Category,
+                    is_sub_product = true,
+                    parent_product_id = (long?)p.ProductId,
+                    is_active = true,
+                })
+                .ToListAsync();
+
+            return Ok(subProducts);
+        }
+
+        var products = await _db.InsuranceProducts
+            .AsNoTracking()
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.ProductName)
+            .Select(p => new
+            {
+                id = p.Id,
+                product_name = p.ProductName,
+                product_type = p.Category == "Specialty" ? specialtyLabel : p.Category,
+                is_sub_product = false,
+                parent_product_id = (long?)null,
+                is_active = p.IsActive,
+            })
+            .ToListAsync();
+
+        return Ok(products);
+    }
+
     private Task<Intermediary?> FindIntermediary(long id)
     {
         var clientId = _tenant.ClientId;
