@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using InsureEdge.API.Filters;
 using InsureEdge.Application.Interfaces;
+using InsureEdge.Application.Validation;
 using InsureEdge.Domain.Entities;
 using InsureEdge.Domain.Enums;
 using InsureEdge.Infrastructure.Data;
@@ -123,6 +124,13 @@ public class DistributionController : ControllerBase
         var intermediaryExists = await _db.Intermediaries.AnyAsync(i => i.Id == request.IntermediaryId && i.ClientId == clientId);
         if (!intermediaryExists) return BadRequest(new { error = "Intermediary not found." });
 
+        var licenseError = ProducerLicenseValidator.Validate(
+            request.ResolvedPcLicenseRequirement(),
+            request.PlLicense,
+            request.ClLicense,
+            request.PlclCombinedLicense);
+        if (licenseError != null) return BadRequest(new { error = licenseError });
+
         var usedCodes = (await _db.Producers
             .Where(p => p.ClientId == clientId)
             .Select(p => p.ProducerCode)
@@ -153,6 +161,13 @@ public class DistributionController : ControllerBase
         var clientId = _tenant.ClientId;
         var intermediaryExists = await _db.Intermediaries.AnyAsync(i => i.Id == request.IntermediaryId && i.ClientId == clientId);
         if (!intermediaryExists) return BadRequest(new { error = "Intermediary not found." });
+
+        var licenseError = ProducerLicenseValidator.Validate(
+            request.ResolvedPcLicenseRequirement(),
+            request.PlLicense,
+            request.ClLicense,
+            request.PlclCombinedLicense);
+        if (licenseError != null) return BadRequest(new { error = licenseError });
 
         producer.IntermediaryId = request.IntermediaryId;
         producer.UpdatedBy = _tenant.UserId;
@@ -253,7 +268,7 @@ public class DistributionController : ControllerBase
         producer.FirstName = Required(request.FirstName, "Unknown", 50);
         producer.MiddleName = TrimTo(request.MiddleName, 50);
         producer.LastName = Required(request.LastName, "Unknown", 50);
-        producer.PcLicenseRequirement = TrimTo(request.PcLicenseRequirement ?? request.ExtraString("pc_license_requirement") ?? request.ExtraString("pcLicenseRequirement"), 10);
+        producer.PcLicenseRequirement = TrimTo(request.ResolvedPcLicenseRequirement(), 10);
         producer.Country = TrimTo(request.Country, 50);
         producer.ResidentialState = TrimTo(request.ResidentialState, 50);
         producer.PlLicense = TrimTo(request.PlLicense, 10);
@@ -264,6 +279,8 @@ public class DistributionController : ControllerBase
         producer.AltTelephoneNumberCC = TrimTo(request.AltTelephoneNumberCc, 10);
         producer.AltTelephoneNumber = TrimTo(request.AltTelephoneNumber, 20);
         producer.Email = TrimTo(request.Email, 50);
+        producer.IsManager = request.IsManager;
+        producer.ManagerId = request.ManagerId;
         producer.Extension = request.Extension;
         producer.Suffix = TrimTo(request.Suffix, 4);
         producer.Gender = TrimTo(request.Gender, 50);
@@ -314,6 +331,8 @@ public class DistributionController : ControllerBase
         alt_telephone_number_cc = p.AltTelephoneNumberCC,
         alt_telephone_number = p.AltTelephoneNumber,
         email = p.Email,
+        is_manager = p.IsManager,
+        manager_id = p.ManagerId,
         extension = p.Extension,
         suffix = p.Suffix,
         gender = p.Gender,
@@ -379,6 +398,8 @@ public sealed class UpsertProducerRequest
     [JsonPropertyName("alt_telephone_number_cc")] public string? AltTelephoneNumberCc { get; init; }
     [JsonPropertyName("alt_telephone_number")] public string? AltTelephoneNumber { get; init; }
     [JsonPropertyName("email")] public string? Email { get; init; }
+    [JsonPropertyName("is_manager")] public bool? IsManager { get; init; }
+    [JsonPropertyName("manager_id")] public long? ManagerId { get; init; }
     [JsonPropertyName("extension")] public int? Extension { get; init; }
     [JsonPropertyName("suffix")] public string? Suffix { get; init; }
     [JsonPropertyName("gender")] public string? Gender { get; init; }
@@ -391,4 +412,7 @@ public sealed class UpsertProducerRequest
             ? value.GetString()
             : null;
     }
+
+    public string? ResolvedPcLicenseRequirement() =>
+        PcLicenseRequirement ?? ExtraString("pc_license_requirement") ?? ExtraString("pcLicenseRequirement");
 }

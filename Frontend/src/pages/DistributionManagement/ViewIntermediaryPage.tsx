@@ -11,6 +11,7 @@ import {
   toSelectOptions,
 } from './IntermediaryReferenceData';
 import { SPECIALTY_INSURANCE_TYPE } from './ProductReferenceData';
+import ProducerLicenseInput, { validateProducerLicense } from './ProducerLicenseInput';
 
 interface ViewIntermediaryPageProps {
   record: IntermediaryRecord;
@@ -39,6 +40,10 @@ function TrashIcon() {
       <path d="M9 6V4h6v2"/>
     </svg>
   );
+}
+
+function FieldError({ message }: { message?: string }) {
+  return message ? <span className="ferr">{message}</span> : null;
 }
 
 // ── Custom hook: fetch dropdown options from common_master_type ────────────────
@@ -1407,7 +1412,7 @@ function producerDisplayName(form: any): string {
 function ProducerCard({ producer, allProducers, onUpdate }: {
   producer: any;
   allProducers: any[];
-  onUpdate: (updated: any) => void;
+  onUpdate: (updated: any) => Promise<void>;
 }) {
   const pcLicOpts = useDropdown('PCLICENSETYPE');
 
@@ -1416,6 +1421,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
   const [editContact, setEditContact] = useState(false);
   const [editAddr,    setEditAddr]    = useState(false);
   const [primForm,    setPrimForm]    = useState<any>({});
+  const [primErrors,  setPrimErrors]  = useState<Record<string, string>>({});
   const [contactForm, setContactForm] = useState<any>({});
   const [addrForm,    setAddrForm]    = useState<any>({});
 
@@ -1425,7 +1431,37 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
 
   function mergeAndSave(patch: any) {
     const updated = { ...producer, form: { ...f, ...patch } };
-    onUpdate(updated);
+    return onUpdate(updated);
+  }
+
+  async function savePrimaryInformation() {
+    const errors: Record<string, string> = {};
+    if (primForm.licReq === 'Combined') {
+      const error = validateProducerLicense(primForm.combinedLicense || '');
+      if (error) errors.combinedLicense = error;
+    } else {
+      const plError = validateProducerLicense(primForm.plLicense || '');
+      const clError = validateProducerLicense(primForm.clLicense || '');
+      if (plError) errors.plLicense = plError;
+      if (clError) errors.clLicense = clError;
+    }
+    setPrimErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+    try {
+      await mergeAndSave(primForm);
+      setEditPrim(false);
+    } catch (error: any) {
+      alert(error.message ?? 'Failed to update producer');
+    }
+  }
+
+  async function saveContactInformation() {
+    try {
+      await mergeAndSave(contactForm);
+      setEditContact(false);
+    } catch (error: any) {
+      alert(error.message ?? 'Failed to update producer contact details');
+    }
   }
 
   function fp(k: string) { return (v: any) => setPrimForm((p: any) => ({ ...p, [k]: v })); }
@@ -1465,7 +1501,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
             <div className="vi-card__hdr" style={{ margin: '-14px -16px 12px', borderRadius: 0 }}>
               <span className="vi-card__title">Producer Primary Information</span>
               {!editPrim && (
-                <button className="vi-icon-btn" onClick={e => { e.stopPropagation(); setPrimForm({ ...f }); setEditPrim(true); }}>
+                <button className="vi-icon-btn" onClick={e => { e.stopPropagation(); setPrimForm({ ...f }); setPrimErrors({}); setEditPrim(true); }}>
                   <PencilIcon />
                 </button>
               )}
@@ -1538,10 +1574,10 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
                   </select>
                 </div>
                 {primForm.licReq === 'Combined'
-                  ? <div className="vi-field"><span className="vi-label">P&amp;C Combined License</span><input className="vi-input" value={primForm.combinedLicense || ''} onChange={e => fp('combinedLicense')(e.target.value)} /></div>
+                  ? <div className="vi-field"><span className="vi-label">P&amp;C Combined License</span><ProducerLicenseInput className={`vi-input${primErrors.combinedLicense ? ' fi--err' : ''}`} value={primForm.combinedLicense || ''} onChange={fp('combinedLicense')} /><FieldError message={primErrors.combinedLicense} /></div>
                   : <>
-                      <div className="vi-field"><span className="vi-label">PL License</span><input className="vi-input" value={primForm.plLicense || ''} onChange={e => fp('plLicense')(e.target.value)} /></div>
-                      <div className="vi-field"><span className="vi-label">CL License</span><input className="vi-input" value={primForm.clLicense || ''} onChange={e => fp('clLicense')(e.target.value)} /></div>
+                      <div className="vi-field"><span className="vi-label">PL License</span><ProducerLicenseInput className={`vi-input${primErrors.plLicense ? ' fi--err' : ''}`} value={primForm.plLicense || ''} onChange={fp('plLicense')} /><FieldError message={primErrors.plLicense} /></div>
+                      <div className="vi-field"><span className="vi-label">CL License</span><ProducerLicenseInput className={`vi-input${primErrors.clLicense ? ' fi--err' : ''}`} value={primForm.clLicense || ''} onChange={fp('clLicense')} /><FieldError message={primErrors.clLicense} /></div>
                     </>
                 }
                 <div className="vi-field">
@@ -1563,7 +1599,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
                 </div>
                 <div className="vi-edit-actions" style={{ gridColumn: '1 / -1' }}>
                   <button className="vi-btn-cancel" onClick={() => setEditPrim(false)}>Cancel</button>
-                  <button className="vi-btn-save" onClick={() => { mergeAndSave(primForm); setEditPrim(false); }}>Save</button>
+                  <button className="vi-btn-save" onClick={savePrimaryInformation}>Save</button>
                 </div>
               </div>
             )}
@@ -1595,7 +1631,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
                 <div className="vi-field"><span className="vi-label">Email</span><input className="vi-input" value={contactForm.email || ''} onChange={e => fc('email')(e.target.value)} /></div>
                 <div className="vi-edit-actions" style={{ gridColumn: '1 / -1' }}>
                   <button className="vi-btn-cancel" onClick={() => setEditContact(false)}>Cancel</button>
-                  <button className="vi-btn-save" onClick={() => { mergeAndSave(contactForm); setEditContact(false); }}>Save</button>
+                  <button className="vi-btn-save" onClick={saveContactInformation}>Save</button>
                 </div>
               </div>
             )}
@@ -1692,6 +1728,7 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [addForm,      setAddForm]      = useState<any>({ ...EMPTY_PRODUCER_FORM });
+  const [addErrors,    setAddErrors]    = useState<Record<string, string>>({});
 
   useEffect(() => {
     const iid = record.id as number;
@@ -1711,7 +1748,7 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
           suffix:          p.suffix        ?? '',
           country:         p.country       ?? 'USA',
           residentState:   p.residential_state ?? '',
-          licReq:          p.pc_licence_requirement ?? 'Separate',
+          licReq:          p.pc_license_requirement ?? p.pc_licence_requirement ?? 'Separate',
           combinedLicense: p.plcl_combined_license  ?? '',
           plLicense:       p.pl_license    ?? '',
           clLicense:       p.cl_license    ?? '',
@@ -1731,12 +1768,48 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
     }).catch(() => {});
   }, [record.id]);
 
-  function updateProducer(updated: any) {
+  async function updateProducer(updated: any) {
+    const iid = record.id as number;
+    const form = updated.form ?? {};
+    await api.producers.update(Number(updated.id), {
+      intermediary_id: iid,
+      status: form.status ? 'Active' : 'Inactive',
+      status_toggle: form.status ?? true,
+      first_name: form.firstName,
+      middle_name: form.middleName || null,
+      last_name: form.lastName,
+      suffix: form.suffix || null,
+      pc_licence_requirement: form.licReq,
+      country: form.country || null,
+      residential_state: form.residentState || null,
+      pl_license: form.licReq === 'Separate' ? (form.plLicense || null) : null,
+      cl_license: form.licReq === 'Separate' ? (form.clLicense || null) : null,
+      plcl_combined_license: form.licReq === 'Combined' ? (form.combinedLicense || null) : null,
+      telephone_number: form.phone || null,
+      alt_telephone_number: form.altPhone || null,
+      extension: form.extension ? Number(form.extension) : null,
+      email: form.email || null,
+      is_manager: form.isManager ?? false,
+      manager_id: form.reportsTo ? Number(form.reportsTo) : null,
+    });
     setProducers(prev => prev.map(p => p.id === updated.id ? updated : p));
   }
 
   async function addProducer() {
     const iid = record.id as number;
+    const errors: Record<string, string> = {};
+    if (addForm.licReq === 'Combined') {
+      const error = validateProducerLicense(addForm.combinedLicense || '');
+      if (error) errors.combinedLicense = error;
+    } else {
+      const plError = validateProducerLicense(addForm.plLicense || '');
+      const clError = validateProducerLicense(addForm.clLicense || '');
+      if (plError) errors.plLicense = plError;
+      if (clError) errors.clLicense = clError;
+    }
+    setAddErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     try {
       let os_user_id: number | null = null;
       if (addForm.email) {
@@ -1788,6 +1861,7 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
       setProducers(prev => [...prev, newProd]);
       setShowAddModal(false);
       setAddForm({ ...EMPTY_PRODUCER_FORM });
+      setAddErrors({});
     } catch (e: any) {
       alert(e.message ?? 'Failed to add producer');
     }
@@ -1803,7 +1877,7 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
         <span style={{ fontSize: 13, color: '#6b7280' }}>{savedProducers.length} producer(s)</span>
         <div className="vi-producers-hdr__actions">
           <button className="vi-btn-outline" onClick={() => setShowBulkUpload(true)}>Producer Bulk Upload</button>
-          <button className="vi-btn-primary" onClick={() => { setAddForm({ ...EMPTY_PRODUCER_FORM }); setShowAddModal(true); }}>
+          <button className="vi-btn-primary" onClick={() => { setAddForm({ ...EMPTY_PRODUCER_FORM }); setAddErrors({}); setShowAddModal(true); }}>
             + Add Producers
           </button>
         </div>
@@ -1857,13 +1931,13 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
                   </select>
                 </div>
                 {addForm.licReq === 'Combined'
-                  ? <div className="vi-form-field"><span className="vi-form-label">Combined License</span><input className="vi-input" value={addForm.combinedLicense} onChange={e => af('combinedLicense')(e.target.value)} /></div>
-                  : <div className="vi-form-field"><span className="vi-form-label">PL License</span><input className="vi-input" value={addForm.plLicense} onChange={e => af('plLicense')(e.target.value)} /></div>
+                  ? <div className="vi-form-field"><span className="vi-form-label">Combined License</span><ProducerLicenseInput className={`vi-input${addErrors.combinedLicense ? ' fi--err' : ''}`} value={addForm.combinedLicense} onChange={af('combinedLicense')} /><FieldError message={addErrors.combinedLicense} /></div>
+                  : <div className="vi-form-field"><span className="vi-form-label">PL License</span><ProducerLicenseInput className={`vi-input${addErrors.plLicense ? ' fi--err' : ''}`} value={addForm.plLicense} onChange={af('plLicense')} /><FieldError message={addErrors.plLicense} /></div>
                 }
               </div>
               {addForm.licReq === 'Separate' && (
                 <div className="vi-form-row vi-form-row--1">
-                  <div className="vi-form-field"><span className="vi-form-label">CL License</span><input className="vi-input" value={addForm.clLicense} onChange={e => af('clLicense')(e.target.value)} /></div>
+                  <div className="vi-form-field"><span className="vi-form-label">CL License</span><ProducerLicenseInput className={`vi-input${addErrors.clLicense ? ' fi--err' : ''}`} value={addForm.clLicense} onChange={af('clLicense')} /><FieldError message={addErrors.clLicense} /></div>
                 </div>
               )}
               <div className="vi-form-row">

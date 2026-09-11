@@ -101,14 +101,23 @@ export default function PermissionMatrix({ permissions, readOnly, onChange }: Pr
   return (
     <div>
       {/* Search */}
-      <div style={{ marginBottom: 16 }}>
-        <input
-          type="text"
-          placeholder="Search screens or modules..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ maxWidth: 320, fontSize: 13 }}
-        />
+      <div className="rgt-search-row" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="rgt-search-wrap" style={{ width: 'min(100%, 574px)', maxWidth: 'none' }}>
+          <span className="rgt-search-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </span>
+          <input
+            className="rgt-search-input"
+            type="search"
+            aria-label="Search modules or features"
+            placeholder="Enter module or feature name"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Table */}

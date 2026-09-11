@@ -1,5 +1,6 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { distributionApi as _api } from '../../api/distribution';
+import ProducerLicenseInput, { validateProducerLicense } from './ProducerLicenseInput';
 
 const WIZARD_STEPS = [
   { n: 1, l1: 'Add',    l2: 'Intermediary Details' },
@@ -108,6 +109,27 @@ function ClearSelect({ value, onChange, options, placeholder, disabled }: {
 function Err({ msg }: { msg?: string }) {
   if (!msg) return null;
   return <span className="ferr"><span className="ferr__ico">⊘</span>{msg}</span>;
+}
+
+function getProducerErrors(form: ProducerForm): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!form.firstName.trim()) errors.firstName = 'Required';
+  if (!form.lastName.trim()) errors.lastName = 'Required';
+  if (!form.country.trim()) errors.country = 'Required';
+  if (!form.residentState) errors.residentState = 'Required';
+  if (form.licReq === 'Combined') {
+    const error = validateProducerLicense(form.combinedLicense);
+    if (error) errors.combinedLicense = error;
+  }
+  if (form.licReq === 'Separate') {
+    const plError = validateProducerLicense(form.plLicense);
+    const clError = validateProducerLicense(form.clLicense);
+    if (plError) errors.plLicense = plError;
+    if (clError) errors.clLicense = clError;
+  }
+  if (!form.phone.trim()) errors.phone = 'Required';
+  if (!form.email.trim()) errors.email = 'Required';
+  return errors;
 }
 
 function EditIcon({ size = 14 }: { size?: number }) {
@@ -280,8 +302,8 @@ function ProducerCard({
             <div className="fg-mb">
               <div className="fc">
                 <label className="fl"><span className="req">*</span> License Number</label>
-                <input className={`fi${errors.combinedLicense ? ' fi--err' : ''}`}
-                  value={form.combinedLicense} onChange={e => sf('combinedLicense', e.target.value)} />
+                <ProducerLicenseInput className={`fi${errors.combinedLicense ? ' fi--err' : ''}`}
+                  value={form.combinedLicense} onChange={value => sf('combinedLicense', value)} />
                 <Err msg={errors.combinedLicense} />
               </div>
             </div>
@@ -289,14 +311,14 @@ function ProducerCard({
             <div className="fg2 fg-mb">
               <div className="fc">
                 <label className="fl"><span className="req">*</span> P&amp;C License (Personal)</label>
-                <input className={`fi${errors.plLicense ? ' fi--err' : ''}`}
-                  value={form.plLicense} onChange={e => sf('plLicense', e.target.value)} />
+                <ProducerLicenseInput className={`fi${errors.plLicense ? ' fi--err' : ''}`}
+                  value={form.plLicense} onChange={value => sf('plLicense', value)} />
                 <Err msg={errors.plLicense} />
               </div>
               <div className="fc">
                 <label className="fl"><span className="req">*</span> P&amp;C License (Commercial)</label>
-                <input className={`fi${errors.clLicense ? ' fi--err' : ''}`}
-                  value={form.clLicense} onChange={e => sf('clLicense', e.target.value)} />
+                <ProducerLicenseInput className={`fi${errors.clLicense ? ' fi--err' : ''}`}
+                  value={form.clLicense} onChange={value => sf('clLicense', value)} />
                 <Err msg={errors.clLicense} />
               </div>
             </div>
@@ -410,25 +432,33 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
   function validateAndSave(id: string) {
     const entry = producers.find(e => e.id === id);
     if (!entry) return;
-    const f = entry.form;
-    const errs: Record<string, string> = {};
-    if (!f.firstName.trim()) errs.firstName = 'Required';
-    if (!f.lastName.trim())  errs.lastName  = 'Required';
-    if (!f.country.trim())   errs.country   = 'Required';
-    if (!f.residentState)    errs.residentState = 'Required';
-    if (f.licReq === 'Combined' && !f.combinedLicense.trim()) errs.combinedLicense = 'Required';
-    if (f.licReq === 'Separate') {
-      if (!f.plLicense.trim()) errs.plLicense = 'Required';
-      if (!f.clLicense.trim()) errs.clLicense = 'Required';
-    }
-    if (!f.phone.trim()) errs.phone = 'Required';
-    if (!f.email.trim()) errs.email = 'Required';
+    const errs = getProducerErrors(entry.form);
     if (Object.keys(errs).length > 0) {
       setProducers(p => p.map(e => e.id !== id ? e : { ...e, errors: errs }));
       showToast('Please fix the errors before saving.', 'error');
       return;
     }
     setProducers(p => p.map(e => e.id !== id ? e : { ...e, saved: true, expanded: false, errors: {} }));
+  }
+
+  function saveAndNext() {
+    const validated = producers.map(producer => {
+      const errors = getProducerErrors(producer.form);
+      return Object.keys(errors).length > 0
+        ? { ...producer, saved: false, expanded: true, errors }
+        : { ...producer, errors: {} };
+    });
+    if (validated.some(producer => Object.keys(producer.errors).length > 0)) {
+      setProducers(validated);
+      showToast('Please fix the errors before saving.', 'error');
+      return;
+    }
+
+    try {
+      const serializable = validated.map(p => ({ ...p, form: { ...p.form, profilePic: null } }));
+      sessionStorage.setItem('shift_step4', JSON.stringify(serializable));
+    } catch { /* ignore */ }
+    onNext?.();
   }
 
   function addProducer() {
@@ -567,13 +597,7 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
       {/* Fixed footer */}
       <div className="fixed-footer">
         <button className="prod-footer-prev" type="button" onClick={onBack}>Previous</button>
-        <button className="footer-save" type="button" onClick={() => {
-          try {
-            const serializable = producers.map(p => ({ ...p, form: { ...p.form, profilePic: null } }));
-            sessionStorage.setItem('shift_step4', JSON.stringify(serializable));
-          } catch { /* ignore */ }
-          onNext?.();
-        }}>Save &amp; Next</button>
+        <button className="footer-save" type="button" onClick={saveAndNext}>Save &amp; Next</button>
       </div>
 
       {/* Add Non-Resident State modal */}
