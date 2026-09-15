@@ -1,5 +1,8 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { distributionApi as _api } from '../../api/distribution';
+import BulkUploadModal from './BulkUploadModal';
+import { includeLegacyValue, jurisdictionOptions } from './IntermediaryReferenceData';
+import './ProducerCreation.css';
 import ProducerLicenseInput, { validateProducerLicense } from './ProducerLicenseInput';
 
 const WIZARD_STEPS = [
@@ -24,7 +27,11 @@ const US_STATES = [
 
 interface NRRow { id: string; state: string; license: string; }
 
-interface ProducerForm {
+export interface ProducerForm {
+  suffix?: string; isManager?: boolean; reportsTo?: string;
+  sameAsIntermediary?: boolean; enterManually?: boolean; googleSearch?: string;
+  addrLine1?: string; addrLine2?: string; addrCountry?: string; addrState?: string;
+  city?: string; county?: string; zipCode?: string; latitude?: string; longitude?: string;
   status: boolean;
   firstName: string; middleName: string; lastName: string;
   country: string; residentState: string;
@@ -38,6 +45,12 @@ interface ProducerForm {
 
 interface ProducerEntry {
   id: string;
+  dbId?: number;
+  producerCode?: string;
+  draftToken?: string;
+  reserving?: boolean;
+  reservationError?: string;
+  saveMessage?: string;
   expanded: boolean;
   saved: boolean;
   form: ProducerForm;
@@ -53,7 +66,19 @@ const DEFAULT_FORM: ProducerForm = {
   profilePic: null, nrRows: [],
 };
 
-let _pid = 1;
+function newProducerDraft(id: string): ProducerEntry {
+  return { id, expanded: true, saved: false, form: { ...DEFAULT_FORM, nrRows: [] }, errors: {} };
+}
+
+function existingProducerEntry(row: any): ProducerEntry {
+  return { id: 'saved-' + row.id, dbId: row.id, producerCode: row.producer_code, saved: true, expanded: false, errors: {},
+    form: { ...DEFAULT_FORM, nrRows: [], status: row.status_toggle ?? row.status === 'Active',
+      firstName: row.first_name ?? '', middleName: row.middle_name ?? '', lastName: row.last_name ?? '', suffix: row.suffix ?? '',
+      country: row.country ?? '', residentState: row.residential_state ?? '', licReq: row.pc_license_requirement ?? row.pc_licence_requirement ?? 'Combined',
+      combinedLicense: row.plcl_combined_license ?? '', plLicense: row.pl_license ?? '', clLicense: row.cl_license ?? '',
+      phoneCC: row.telephone_number_cc ?? '1', phone: row.telephone_number ?? '', altPhone: row.alt_telephone_number ?? '',
+      ext: String(row.extension ?? ''), email: row.email ?? '', isManager: row.is_manager ?? false, reportsTo: String(row.manager_id ?? '') } };
+}
 
 function formatUSPhone(raw: string): string {
   const d = raw.replace(/\D/g, '').slice(0, 10);
@@ -111,7 +136,7 @@ function Err({ msg }: { msg?: string }) {
   return <span className="ferr"><span className="ferr__ico">⊘</span>{msg}</span>;
 }
 
-function getProducerErrors(form: ProducerForm): Record<string, string> {
+export function getProducerErrors(form: ProducerForm): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!form.firstName.trim()) errors.firstName = 'Required';
   if (!form.lastName.trim()) errors.lastName = 'Required';
@@ -153,10 +178,15 @@ function TrashIcon({ size = 14 }: { size?: number }) {
 }
 
 interface ProducerCardProps {
+  standalone?: boolean;
+  intermediaryId?: number;
+  managers?: { id: number; name: string }[];
+  saving?: boolean;
   producer: ProducerEntry;
   index: number;
   savedNames: string[];
   countryOpts: string[];
+  onRetryReservation?: (id: string) => void;
   onUpdate: (id: string, patch: Partial<ProducerForm>) => void;
   onValidateSave: (id: string) => void;
   onToggleExpand: (id: string) => void;
@@ -166,13 +196,121 @@ interface ProducerCardProps {
 }
 
 function ProducerCard({
-  producer, index, savedNames, countryOpts,
-  onUpdate, onValidateSave, onToggleExpand, onDelete, onOpenAddNR, onRemoveNR,
+  producer, index, savedNames, countryOpts, standalone = false, intermediaryId, managers = [], saving = false,
+  onUpdate, onValidateSave, onToggleExpand, onDelete, onOpenAddNR, onRemoveNR, onRetryReservation,
 }: ProducerCardProps) {
   const { id, expanded, saved, form, errors } = producer;
   const sf = (k: keyof ProducerForm, v: unknown) => onUpdate(id, { [k]: v } as Partial<ProducerForm>);
   const picRef = useRef<HTMLInputElement>(null);
   const displayName = [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ') || `Producer ${index + 1}`;
+
+  const [stateSearch, setStateSearch] = useState('');
+  const [pictureUrl, setPictureUrl] = useState('');
+  const [detailError, setDetailError] = useState('');
+  const [copyingAddress, setCopyingAddress] = useState(false);
+  useEffect(() => {
+    if (!standalone || !form.profilePic) { setPictureUrl(''); return; }
+    const url = URL.createObjectURL(form.profilePic);
+    setPictureUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [standalone, form.profilePic]);
+
+  function selectPicture(file?: File) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/gif'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setDetailError('Choose a PNG, JPEG or GIF file up to 10 MB.'); return;
+    }
+    setDetailError(''); sf('profilePic', file);
+  }
+
+  async function copyIntermediaryAddress(checked: boolean) {
+    if (!checked) { sf('sameAsIntermediary', false); return; }
+    if (!intermediaryId) return;
+    setCopyingAddress(true); setDetailError('');
+    try {
+      const row = await _api.address.get(intermediaryId);
+      if (!row) throw new Error('No intermediary address is available.');
+      onUpdate(id, { sameAsIntermediary: true, enterManually: false,
+        addrLine1: row.address_line1 ?? '', addrLine2: row.address_line2 ?? '',
+        addrCountry: row.country ?? '', addrState: row.state ?? '', city: row.city ?? '',
+        county: row.county ?? '', zipCode: row.zip_code ?? '', latitude: String(row.latitude ?? ''), longitude: String(row.longitude ?? '') });
+    } catch { setDetailError('The intermediary address could not be loaded. Enter the address manually.'); }
+    finally { setCopyingAddress(false); }
+  }
+
+  function inputField(key: keyof ProducerForm, label: string, required = false, disabled = false) {
+    return <label className="pc-field" key={key}><span>{required && <span className="req">* </span>}{label}</span>
+      <input className={errors[key] ? 'fi fi--err' : 'fi'} aria-required={required} disabled={disabled}
+        value={String(form[key] ?? '')} onChange={event => sf(key, event.target.value)} />
+      <Err msg={errors[key]} />
+    </label>;
+  }
+  const manualDisabled = !form.enterManually || !!form.sameAsIntermediary;
+  const visibleStates = form.nrRows.filter(row => (row.state + ' ' + row.license).toLowerCase().includes(stateSearch.trim().toLowerCase()));
+
+  if (standalone) return <section className="pc-card" id={id} aria-label={displayName}>
+    <header className="pc-card-header">
+      <button type="button" className="pc-expand" aria-expanded={expanded} onClick={() => onToggleExpand(id)}><span aria-hidden="true">{expanded ? '\u2296' : '\u2295'}</span> {displayName}</button>
+      {!producer.dbId && <button type="button" aria-label="Remove unsaved producer" onClick={() => onDelete(id)}><TrashIcon /></button>}
+    </header>
+    {expanded && <>
+      <fieldset className="pc-details" disabled={saving || saved}>
+        <section className="pc-primary">
+          <h2>Producer Primary Information</h2>
+          <div className="pc-generated"><span>Producer ID - {producer.producerCode || (producer.reserving ? 'Generating...' : 'Unavailable')}</span><small>Auto Generated</small></div>
+          {producer.reservationError && <p role="alert" className="ferr">{producer.reservationError} <button type="button" disabled={producer.reserving} onClick={() => onRetryReservation?.(id)}>Retry ID</button></p>}
+          <div className="pc-status">Status: <Toggle checked={form.status} onChange={value => sf('status', value)} /></div>
+          <p className="pc-picture-label">Upload Producer Profile Picture</p>
+          <div className="pc-upload" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (!saving && !saved) selectPicture(event.dataTransfer.files[0]); }}>
+            {pictureUrl && <img src={pictureUrl} alt="Selected producer profile" />}
+            <span>Drag and Drop File Here or Select a File</span>
+            <small>Supported formats are PNG, JPEG &amp; GIF.<br />File size: up to 10 MB</small>
+            <button type="button" onClick={() => picRef.current?.click()}>Browse File</button>
+            <input ref={picRef} type="file" accept="image/png,image/jpeg,image/gif" hidden onChange={event => selectPicture(event.target.files?.[0])} />
+          </div>
+          <div className="pc-grid">
+            {inputField('firstName', 'First Name', true)}{inputField('middleName', 'Middle / Initial Name')}
+            {inputField('lastName', 'Last Name', true)}{inputField('suffix', 'Suffix')}
+            <label className="pc-field"><span><span className="req">* </span>Country</span><ClearSelect value={form.country} options={countryOpts}
+              onChange={country => onUpdate(id, { country, residentState: '' })} /><Err msg={errors.country} /></label>
+            <label className="pc-field"><span><span className="req">* </span>Resident State</span><ClearSelect value={form.residentState}
+              options={includeLegacyValue(jurisdictionOptions(form.country), form.residentState)} onChange={value => sf('residentState', value)} /><Err msg={errors.residentState} /></label>
+            <label className="pc-field"><span><span className="req">* </span>P&amp;C Licensing Requirement</span><select value={form.licReq} onChange={event => sf('licReq', event.target.value)}>
+              <option>Combined</option><option>Separate</option></select></label><span />
+            {form.licReq === 'Combined' ? <><label className="pc-field"><span><span className="req">* </span>P&amp;C Combined License</span><ProducerLicenseInput className="fi" value={form.combinedLicense} onChange={value => sf('combinedLicense', value)} /><Err msg={errors.combinedLicense} /></label><span /></>
+              : <>{(['plLicense', 'clLicense'] as const).map(key => <label className="pc-field" key={key}><span><span className="req">* </span>{key === 'plLicense' ? 'PL License' : 'CL License'}</span><ProducerLicenseInput className="fi" value={form[key]} onChange={value => sf(key, value)} /><Err msg={errors[key]} /></label>)}</>}
+            <div className="pc-field"><span>Is a Manager</span><div className="pc-radio">{[true, false].map(value => <label key={String(value)}><input type="radio" name={`manager-${id}`} checked={!!form.isManager === value} onChange={() => onUpdate(id, { isManager: value, reportsTo: '' })} />{value ? 'Yes' : 'No'}</label>)}</div></div>
+            <label className="pc-field"><span>Reports To</span><select value={form.reportsTo || ''} disabled={form.isManager} onChange={event => sf('reportsTo', event.target.value)}><option value="">Select...</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}</select></label>
+          </div>
+        </section>
+        <section className="pc-contact">
+          <h2>Contact Details</h2>
+          <div className="pc-grid pc-contact-grid">
+            <label className="pc-field"><span><span className="req">* </span>Telephone Number</span><PhoneField value={form.phone} onChange={value => sf('phone', value)} hasError={!!errors.phone} /><Err msg={errors.phone} /></label>
+            {inputField('ext', 'Extension')}
+            <label className="pc-field"><span>Alternative Telephone Number</span><PhoneField value={form.altPhone} onChange={value => sf('altPhone', value)} /></label>
+            <label className="pc-field"><span><span className="req">* </span>Email ID</span><input className="fi" type="email" value={form.email} onChange={event => sf('email', event.target.value)} /><Err msg={errors.email} /></label>
+          </div>
+          <div className="pc-address-header"><h2>Office Address</h2><label><input type="checkbox" disabled={copyingAddress} checked={!!form.sameAsIntermediary} onChange={event => void copyIntermediaryAddress(event.target.checked)} />Same as Intermediary Location</label></div>
+          {inputField('googleSearch', 'Google Address Search', false, !!form.sameAsIntermediary)}
+          <label className="pc-manual"><input type="checkbox" checked={!!form.enterManually} disabled={form.sameAsIntermediary} onChange={event => sf('enterManually', event.target.checked)} />Enter Address Manually</label>
+          <div className="pc-grid pc-address-grid">
+            <div className="pc-address-line">{inputField('addrLine1', 'Address Line 1', true, manualDisabled)}</div><div className="pc-address-line">{inputField('addrLine2', 'Address Line 2', false, manualDisabled)}</div>
+            <label className="pc-field"><span><span className="req">* </span>Country</span><ClearSelect disabled={manualDisabled} value={form.addrCountry || 'United States'} options={countryOpts} onChange={value => onUpdate(id, { addrCountry: value, addrState: '' })} /></label>
+            <label className="pc-field"><span><span className="req">* </span>State</span><ClearSelect disabled={manualDisabled} value={form.addrState || ''} options={includeLegacyValue(jurisdictionOptions(form.addrCountry || 'United States'), form.addrState || '')} onChange={value => sf('addrState', value)} /></label>
+            {inputField('city', 'City', true, manualDisabled)}{inputField('county', 'County', true, manualDisabled)}{inputField('zipCode', 'Zip Code', true, manualDisabled)}<span />
+            {inputField('latitude', 'Latitude', false, manualDisabled)}{inputField('longitude', 'Longitude', false, manualDisabled)}
+          </div>
+          {detailError && <p className="ferr" role="alert">{detailError}</p>}
+        </section>
+      </fieldset>
+      <section className="pc-nr"><h2>Non-Resident State(s)</h2><div className="pc-nr-controls"><input aria-label="Search by state or License" placeholder="Search by state or License" value={stateSearch} onChange={event => setStateSearch(event.target.value)} /><button disabled={saving || saved} type="button" onClick={() => onOpenAddNR(id)}>+ Add State</button></div>
+        {visibleStates.length === 0 ? <p className="pc-empty">No Data Available</p> : <table className="nr-table"><thead><tr><th>State</th><th>License</th><th /></tr></thead><tbody>{visibleStates.map(row => <tr key={row.id}><td>{row.state}</td><td>{row.license}</td><td><button disabled={saving || saved} aria-label={`Remove ${row.state}`} onClick={() => onRemoveNR(id, row.id)}><TrashIcon /></button></td></tr>)}</tbody></table>}
+      </section>
+      {producer.saveMessage && <p className="pc-save-message" role="status">{producer.saveMessage}</p>}
+      <footer className="pc-save"><button type="button" disabled={saving || saved || !producer.draftToken} onClick={() => onValidateSave(id)}>{saving ? 'Saving...' : saved ? 'Saved' : 'Save'}</button></footer>
+    </>}
+  </section>;
 
   return (
     <div className={`prod-card${saved ? ' prod-card--saved' : ''}`}>
@@ -394,10 +532,54 @@ function ProducerCard({
   );
 }
 
-export default function AddProducersPage({ onBack, onNext }: { onBack: () => void; onNext?: () => void }) {
-  const [producers, setProducers] = useState<ProducerEntry[]>([
-    { id: String(_pid++), expanded: true, saved: false, form: { ...DEFAULT_FORM }, errors: {} },
-  ]);
+// Reuses the same create endpoint and field contract as View Intermediary.
+// The backend assigns both the database ID and the display producer code.
+export async function createStandaloneProducer(intermediaryId: number, form: ProducerForm, draftToken?: string) {
+  let os_user_id: number | null = null;
+  try {
+    const user = await _api.users.create({ email: form.email, name: [form.firstName, form.lastName].filter(Boolean).join(' ') });
+    os_user_id = user.id;
+  } catch { /* Existing user setup is non-fatal to producer creation. */ }
+  const created = await _api.producers.create({
+    ...(draftToken ? { producer_draft_token: draftToken } : {}),
+    intermediary_id: intermediaryId, status: form.status ? 'Active' : 'Inactive', status_toggle: form.status,
+    first_name: form.firstName, middle_name: form.middleName || null, last_name: form.lastName, suffix: form.suffix || null,
+    pc_licence_requirement: form.licReq, country: form.country, residential_state: form.residentState,
+    pl_license: form.licReq === 'Separate' ? form.plLicense : null,
+    cl_license: form.licReq === 'Separate' ? form.clLicense : null,
+    plcl_combined_license: form.licReq === 'Combined' ? form.combinedLicense : null,
+    telephone_number_cc: form.phoneCC ? '+' + form.phoneCC.replace(/^\+/, '') : null,
+    telephone_number: form.phone, alt_telephone_number_cc: form.altPhone ? '+1' : null,
+    alt_telephone_number: form.altPhone || null, extension: form.ext ? Number(form.ext) : null,
+    email: form.email, is_manager: form.isManager ?? false,
+    manager_id: !form.isManager && form.reportsTo ? Number(form.reportsTo) : null, os_user_id,
+  });
+  const warnings: string[] = [];
+  if (form.addrLine1) {
+    try {
+      await _api.producerAddress.create(created.id, { address_line1: form.addrLine1, address_line2: form.addrLine2 || '',
+        country: form.addrCountry || 'United States', state: form.addrState || '', city: form.city || '', county: form.county || '',
+        zip_code: form.zipCode || '', latitude: form.latitude || null, longitude: form.longitude || null });
+    } catch { warnings.push('Office address was not saved because the address service is unavailable.'); }
+  }
+  for (const row of form.nrRows) {
+    try { await _api.producerNrStates.create(created.id, { state: row.state, license_number: row.license }); }
+    catch { warnings.push('Non-resident state ' + row.state + ' was not saved.'); }
+  }
+  if (form.profilePic) warnings.push('The profile picture is a local preview; this API does not support picture uploads.');
+  return { created, warnings };
+}
+
+export default function AddProducersPage({ onBack, onNext, intermediaryId, addRequests = 1 }: { onBack: () => void; onNext?: () => void; intermediaryId?: number; addRequests?: number }) {
+  const standalone = intermediaryId !== undefined;
+  const [managers, setManagers] = useState<{ id: number; name: string }[]>([]);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [savingIds, setSavingIds] = useState<string[]>([]);
+  const inFlight = useRef(new Set<string>());
+  const nextDraftKey = useRef(1);
+  const seenAddRequests = useRef(0);
+  const reservationQueue = useRef<Promise<void>>(Promise.resolve());
+  const [producers, setProducers] = useState<ProducerEntry[]>(() => standalone ? [] : [newProducerDraft('draft-0')]);
   const [countryOpts] = useState(COUNTRY_OPTS);
   const [toast, setToast] = useState<{ msg: string; type: 'info' | 'error' } | null>(null);
   const [addNRFor, setAddNRFor] = useState<string | null>(null);
@@ -407,6 +589,7 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
   const mainRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (standalone) return;
     try {
       const saved = sessionStorage.getItem('shift_step4');
       if (saved) {
@@ -414,7 +597,19 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
         if (Array.isArray(r) && r.length > 0) setProducers(r);
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [standalone]);
+
+  useEffect(() => {
+    if (intermediaryId === undefined) return;
+    let cancelled = false;
+    _api.producers.listByIntermediary(intermediaryId).then(rows => {
+      if (!cancelled) {
+        setManagers(rows.map(row => ({ id: row.id, name: [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') })));
+        setProducers(previous => [...rows.filter(row => !previous.some(entry => entry.dbId === row.id)).map(existingProducerEntry), ...previous]);
+      }
+    }).catch(() => { if (!cancelled) setToast({ msg: 'Reports To options could not be loaded.', type: 'error' }); });
+    return () => { cancelled = true; };
+  }, [intermediaryId]);
 
   function showToast(msg: string, type: 'info' | 'error' = 'info') {
     setToast({ msg, type });
@@ -429,13 +624,28 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
     setProducers(p => p.map(e => e.id !== id ? e : { ...e, expanded: !e.expanded }));
   }
 
-  function validateAndSave(id: string) {
+  async function validateAndSave(id: string) {
     const entry = producers.find(e => e.id === id);
-    if (!entry) return;
+    if (!entry || inFlight.current.has(id) || (standalone && entry.dbId)) return;
+    if (standalone && !entry.draftToken) return;
     const errs = getProducerErrors(entry.form);
     if (Object.keys(errs).length > 0) {
       setProducers(p => p.map(e => e.id !== id ? e : { ...e, errors: errs }));
       showToast('Please fix the errors before saving.', 'error');
+      return;
+    }
+    if (standalone && intermediaryId !== undefined) {
+      inFlight.current.add(id); setSavingIds(previous => [...previous, id]);
+      try {
+        const { created, warnings } = await createStandaloneProducer(intermediaryId, entry.form, entry.draftToken);
+        setProducers(previous => previous.map(item => item.id !== id ? item : { ...item, dbId: created.id,
+          producerCode: created.producer_code, saved: true, errors: {}, saveMessage: ['Producer saved.', ...warnings].join(' ') }));
+        setManagers(previous => [...previous, { id: created.id, name: [entry.form.firstName, entry.form.lastName].join(' ') }]);
+      } catch (error: any) {
+        setProducers(previous => previous.map(item => item.id !== id ? item : { ...item, saveMessage: error.response?.data?.error || 'Producer could not be saved. Please try again.' }));
+      } finally {
+        inFlight.current.delete(id); setSavingIds(previous => previous.filter(value => value !== id));
+      }
       return;
     }
     setProducers(p => p.map(e => e.id !== id ? e : { ...e, saved: true, expanded: false, errors: {} }));
@@ -461,12 +671,38 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
     onNext?.();
   }
 
-  function addProducer() {
-    setProducers(p => [...p, {
-      id: String(_pid++), expanded: true, saved: false,
-      form: { ...DEFAULT_FORM }, errors: {},
-    }]);
+  function reserveDraftId(id: string) {
+    if (intermediaryId === undefined) return;
+    setProducers(previous => previous.map(entry => entry.id === id ? { ...entry, reserving: true, reservationError: undefined } : entry));
+    // Serial requests preserve card order even when Add is clicked rapidly.
+    reservationQueue.current = reservationQueue.current.then(async () => {
+      try {
+        const reservation = await _api.producers.reserveId(intermediaryId);
+        setProducers(previous => previous.map(entry => entry.id === id ? { ...entry, reserving: false,
+          producerCode: reservation.producer_code, draftToken: reservation.producer_draft_token } : entry));
+      } catch (error: any) {
+        setProducers(previous => previous.map(entry => entry.id === id ? { ...entry, reserving: false,
+          reservationError: error.response?.data?.error || 'Producer ID could not be generated.' } : entry));
+      }
+    });
   }
+
+  function addProducer() {
+    // Construct the draft outside the updater: React StrictMode may invoke updaters twice.
+    let key: string;
+    do { key = 'draft-' + nextDraftKey.current++; } while (producers.some(entry => entry.id === key));
+    const draft = newProducerDraft(key);
+    setProducers(previous => [...previous, draft]);
+    if (standalone) reserveDraftId(draft.id);
+  }
+
+  useEffect(() => {
+    if (!standalone) return;
+    while (seenAddRequests.current < addRequests) {
+      seenAddRequests.current++;
+      addProducer();
+    }
+  }, [standalone, addRequests]);
 
   function openAddNR(producerId: string) {
     setAddNRFor(producerId);
@@ -480,6 +716,7 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
     const errs: { state?: string; license?: string } = {};
     if (!modalNR.state) errs.state = 'State is required.';
     if (!modalNR.license.trim()) errs.license = 'License is required.';
+    if (standalone) { const licenseError = validateProducerLicense(modalNR.license); if (licenseError) errs.license = licenseError; }
     if (addNRFor) {
       const entry = producers.find(e => e.id === addNRFor);
       if (entry && entry.form.nrRows.some(r => r.state === modalNR.state)) {
@@ -524,8 +761,9 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
         </div>
       )}
 
-      <main className="wi-main" ref={mainRef}>
+      <main className={standalone ? "wi-main pc-page" : "wi-main"} ref={mainRef}>
 
+      {!standalone && <>
       {/* Page head */}
       <div className="wi-head">
         <h1 className="wi-title">Add Intermediary / Pragya Jha</h1>
@@ -555,15 +793,21 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
         ))}
       </div>
 
+      </>}
       {/* Producer cards */}
       <div className="prod-list">
         {producers.map((prod, idx) => (
           <ProducerCard
             key={prod.id}
             producer={prod}
+            standalone={standalone}
+            intermediaryId={intermediaryId}
+            managers={managers}
+            saving={savingIds.includes(prod.id)}
             index={idx}
             savedNames={getSavedNames(prod.id)}
             countryOpts={countryOpts}
+            onRetryReservation={reserveDraftId}
             onUpdate={updateProducer}
             onValidateSave={validateAndSave}
             onToggleExpand={toggleExpand}
@@ -577,7 +821,7 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
       {/* Action buttons */}
       <div className="prod-actions">
         <button className="prod-btn-bulk" type="button"
-          onClick={() => showToast('Functionality Coming Soon', 'info')}>
+          onClick={() => standalone ? setShowBulkUpload(true) : showToast('Functionality Coming Soon', 'info')}>
           ↑ Producer Bulk Upload
         </button>
         <button className="prod-btn-add" type="button" onClick={addProducer}>
@@ -596,10 +840,11 @@ export default function AddProducersPage({ onBack, onNext }: { onBack: () => voi
 
       {/* Fixed footer */}
       <div className="fixed-footer">
-        <button className="prod-footer-prev" type="button" onClick={onBack}>Previous</button>
-        <button className="footer-save" type="button" onClick={saveAndNext}>Save &amp; Next</button>
+        <button className="prod-footer-prev" type="button" disabled={savingIds.length > 0} onClick={onBack}>{standalone ? 'Back' : 'Previous'}</button>
+        {!standalone && <button className="footer-save" type="button" onClick={saveAndNext}>Save &amp; Next</button>}
       </div>
 
+      {showBulkUpload && <BulkUploadModal onClose={() => setShowBulkUpload(false)} />}
       {/* Add Non-Resident State modal */}
       {addNRFor && (
         <div className="overlay" onClick={closeAddNR}>

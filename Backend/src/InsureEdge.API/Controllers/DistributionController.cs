@@ -1,4 +1,6 @@
 using System.Text.Json;
+using InsureEdge.API.Services;
+using Npgsql;
 using System.Text.Json.Serialization;
 using InsureEdge.API.Filters;
 using InsureEdge.Application.Interfaces;
@@ -19,11 +21,13 @@ public class DistributionController : ControllerBase
 {
     private readonly InsureEdgeDbContext _db;
     private readonly ICurrentTenantService _tenant;
+    private readonly ProducerDraftIds _draftIds;
 
-    public DistributionController(InsureEdgeDbContext db, ICurrentTenantService tenant)
+    public DistributionController(InsureEdgeDbContext db, ICurrentTenantService tenant, ProducerDraftIds draftIds)
     {
         _db = db;
         _tenant = tenant;
+        _draftIds = draftIds;
     }
 
     [HttpGet("intermediaries")]
@@ -117,6 +121,15 @@ public class DistributionController : ControllerBase
         return producer == null ? NotFound() : Ok(ToProducerResponse(producer));
     }
 
+    [HttpPost("producers/reserve-id/{intermediaryId:long}")]
+    public async Task<IActionResult> ReserveProducerId(long intermediaryId)
+    {
+        if (!await _db.Intermediaries.AnyAsync(i => i.Id == intermediaryId && i.ClientId == _tenant.ClientId))
+            return NotFound();
+        try { return Ok(await _draftIds.ReserveAsync(_tenant.ClientId, _tenant.UserId, intermediaryId)); }
+        catch (InvalidOperationException error) { return Conflict(new { error = error.Message }); }
+    }
+
     [HttpPost("producers")]
     public async Task<IActionResult> CreateProducer([FromBody] UpsertProducerRequest request)
     {
@@ -131,6 +144,20 @@ public class DistributionController : ControllerBase
             request.PlclCombinedLicense);
         if (licenseError != null) return BadRequest(new { error = licenseError });
 
+        ReservedProducerId? reservation = null;
+        if (!string.IsNullOrEmpty(request.ProducerDraftToken))
+        {
+            if (!_draftIds.TryRead(request.ProducerDraftToken, clientId, _tenant.UserId, request.IntermediaryId, out reservation))
+                return BadRequest(new { error = "This producer ID reservation is invalid for the current user or intermediary." });
+            var existing = await FindProducer(reservation!.Id);
+            if (existing != null)
+            {
+                // A retry after a successful commit must not insert or overwrite a producer.
+                return existing.IntermediaryId == request.IntermediaryId && existing.ProducerCode == ProducerDraftIds.FormatCode(reservation.Id)
+                    ? Ok(ToProducerResponse(existing)) : Conflict(new { error = "The reserved producer ID is already in use." });
+            }
+        }
+
         var usedCodes = (await _db.Producers
             .Where(p => p.ClientId == clientId)
             .Select(p => p.ProducerCode)
@@ -138,16 +165,25 @@ public class DistributionController : ControllerBase
 
         var producer = new Producer
         {
+            Id = reservation?.Id ?? 0,
             ClientId = clientId,
             IntermediaryId = request.IntermediaryId,
             CreatedBy = _tenant.UserId,
             CreatedOn = DateTime.UtcNow,
-            ProducerCode = NextCode("PR", usedCodes),
+            ProducerCode = reservation is null ? NextCode("PR", usedCodes) : ProducerDraftIds.FormatCode(reservation.Id),
         };
 
         ApplyProducer(producer, request);
         _db.Producers.Add(producer);
-        await _db.SaveChangesAsync();
+        try { await _db.SaveChangesAsync(); }
+        catch (DbUpdateException error) when (reservation != null && error.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            _db.Entry(producer).State = EntityState.Detached;
+            var existing = await FindProducer(reservation.Id);
+            if (existing != null && existing.IntermediaryId == request.IntermediaryId && existing.ProducerCode == producer.ProducerCode)
+                return Ok(ToProducerResponse(existing));
+            return Conflict(new { error = "The reserved producer ID is already in use." });
+        }
 
         return Ok(ToProducerResponse(producer));
     }
@@ -381,6 +417,7 @@ public sealed class UpsertIntermediaryRequest
 
 public sealed class UpsertProducerRequest
 {
+    [JsonPropertyName("producer_draft_token")] public string? ProducerDraftToken { get; init; }
     [JsonPropertyName("intermediary_id")] public long IntermediaryId { get; init; }
     [JsonPropertyName("status")] public string? Status { get; init; }
     [JsonPropertyName("status_toggle")] public bool? StatusToggle { get; init; }

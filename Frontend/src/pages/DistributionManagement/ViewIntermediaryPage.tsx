@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { KeyRound, Search, Upload, UserRound, Pencil, ChevronsUp } from 'lucide-react';
 import { passwordResetApi } from '../../api/passwordReset';
 import './ProducerView.css';
+import AddProducersPage from './AddProducersPage';
 import type { IntermediaryRecord } from '../../types/Distribution';
 import { distributionApi as api } from '../../api/distribution';
 import SearchableSelect from '../../components/ui/SearchableSelect';
@@ -1395,19 +1396,6 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
 // TAB 4 — PRODUCERS
 // ══════════════════════════════════════════════════════════════════
 
-const EMPTY_PRODUCER_FORM = {
-  status: true, profilePicUrl: '',
-  firstName: '', middleName: '', lastName: '', suffix: '',
-  country: 'USA', residentState: '',
-  licReq: 'Separate' as 'Separate' | 'Combined',
-  combinedLicense: '', plLicense: '', clLicense: '',
-  isManager: false, reportsTo: '',
-  phone: '', extension: '', altPhone: '', email: '',
-  addrLine1: '', addrLine2: '', addrCountry: 'USA',
-  addrState: '', city: '', county: '',
-  zipCode: '', latitude: '', longitude: '',
-};
-
 function producerDisplayName(form: any): string {
   return [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ') || 'Unnamed Producer';
 }
@@ -1793,20 +1781,16 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
   );
 }
 
-function ProducersTab({ record, onRecordChange: _onRecordChange }: {
+function ProducersTab({ record, onAddProducer }: {
   record: IntermediaryRecord;
-  onRecordChange: (r: IntermediaryRecord) => void;
+  onAddProducer: () => void;
 }) {
-  const pcLicOpts = useDropdown('PCLICENSETYPE');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [producers,    setProducers]    = useState<any[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
-  const [addForm,      setAddForm]      = useState<any>({ ...EMPTY_PRODUCER_FORM });
-  const [addErrors,    setAddErrors]    = useState<Record<string, string>>({});
 
   useEffect(() => {
     const iid = record.id as number;
@@ -1885,81 +1869,6 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
     setProducers(prev => prev.map(p => p.id === updated.id ? updated : p));
   }
 
-  async function addProducer() {
-    const iid = record.id as number;
-    const errors: Record<string, string> = {};
-    if (addForm.licReq === 'Combined') {
-      const error = validateProducerLicense(addForm.combinedLicense || '');
-      if (error) errors.combinedLicense = error;
-    } else {
-      const plError = validateProducerLicense(addForm.plLicense || '');
-      const clError = validateProducerLicense(addForm.clLicense || '');
-      if (plError) errors.plLicense = plError;
-      if (clError) errors.clLicense = clError;
-    }
-    setAddErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-
-    try {
-      let os_user_id: number | null = null;
-      if (addForm.email) {
-        try {
-          const user = await api.users.create({
-            email:  addForm.email,
-            name:   [addForm.firstName, addForm.lastName].filter(Boolean).join(' ') || null,
-          });
-          os_user_id = user.id;
-        } catch { /* non-fatal */ }
-      }
-
-      const payload = {
-        intermediary_id:           iid,
-        status:                    addForm.status ? 'Active' : 'Inactive',
-        status_toggle:             addForm.status ?? true,
-        first_name:                addForm.firstName,
-        middle_name:               addForm.middleName  || null,
-        last_name:                 addForm.lastName,
-        suffix:                    addForm.suffix       || null,
-        pc_licence_requirement:    addForm.licReq,
-        country:                   addForm.country      || null,
-        residential_state:         addForm.residentState || null,
-        pl_license:                addForm.licReq === 'Separate' ? (addForm.plLicense || null) : null,
-        cl_license:                addForm.licReq === 'Separate' ? (addForm.clLicense || null) : null,
-        plcl_combined_license:     addForm.licReq === 'Combined' ? (addForm.combinedLicense || null) : null,
-        telephone_number_cc:       null,
-        telephone_number:          addForm.phone        || null,
-        alt_telephone_number_cc:   null,
-        alt_telephone_number:      addForm.altPhone     || null,
-        extension:                 addForm.extension ? Number(addForm.extension) : null,
-        email:                     addForm.email        || null,
-        is_manager:                addForm.isManager    ?? false,
-        manager_id:                addForm.reportsTo ? Number(addForm.reportsTo) : null,
-        os_user_id,
-      };
-      const created = await api.producers.create(payload);
-      const newProd = {
-        id:      created.id,
-        code: created.producer_code,
-        saved:   true,
-        expanded: false,
-        errors:  {},
-        form: {
-          ...addForm,
-          status: created.status_toggle ?? (created.status === 'Active'),
-          nrStates: [],
-        },
-      };
-      setProducers(prev => [...prev, newProd]);
-      setShowAddModal(false);
-      setAddForm({ ...EMPTY_PRODUCER_FORM });
-      setAddErrors({});
-    } catch (e: any) {
-      alert(e.message ?? 'Failed to add producer');
-    }
-  }
-
-  function af(k: string) { return (v: any) => setAddForm((p: any) => ({ ...p, [k]: v })); }
-
   const savedProducers = producers.filter(p => p.saved);
 
   return (
@@ -1975,7 +1884,7 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
       <div className="vi-producers-hdr">
         <div className="vi-producers-hdr__actions">
           <button className="vi-btn-outline" onClick={() => setShowBulkUpload(true)}><Upload size={15} /> Producer Bulk Upload</button>
-          <button className="vi-btn-outline" onClick={() => { setAddForm({ ...EMPTY_PRODUCER_FORM }); setAddErrors({}); setShowAddModal(true); }}>
+          <button className="vi-btn-outline" onClick={onAddProducer}>
             + Add Producers
           </button>
         </div>
@@ -1985,83 +1894,7 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
 
       {showBulkUpload && <BulkUploadModal onClose={() => setShowBulkUpload(false)} />}
 
-      {/* Add Producer Modal */}
-      {showAddModal && (
-        <div className="vi-modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="vi-modal" style={{ width: 620 }} onClick={e => e.stopPropagation()}>
-            <div className="vi-modal__hdr">
-              <h3 className="vi-modal__title">Add Producer</h3>
-              <button className="vi-modal__close" onClick={() => setShowAddModal(false)}>×</button>
-            </div>
-            <div className="vi-modal__body">
-              <div className="vi-form-row">
-                <div className="vi-form-field"><span className="vi-form-label">First Name</span><input className="vi-input" value={addForm.firstName} onChange={e => af('firstName')(e.target.value)} /></div>
-                <div className="vi-form-field"><span className="vi-form-label">Last Name</span><input className="vi-input" value={addForm.lastName} onChange={e => af('lastName')(e.target.value)} /></div>
-              </div>
-              <div className="vi-form-row">
-                <div className="vi-form-field"><span className="vi-form-label">Middle Name</span><input className="vi-input" value={addForm.middleName} onChange={e => af('middleName')(e.target.value)} /></div>
-                <div className="vi-form-field"><span className="vi-form-label">Suffix</span><input className="vi-input" value={addForm.suffix} onChange={e => af('suffix')(e.target.value)} /></div>
-              </div>
-              <div className="vi-form-row">
-                <div className="vi-form-field"><span className="vi-form-label">Country</span><input className="vi-input" value={addForm.country} onChange={e => af('country')(e.target.value)} /></div>
-                <div className="vi-form-field">
-                  <span className="vi-form-label">Resident State</span>
-                  <select className="vi-select" value={addForm.residentState} onChange={e => af('residentState')(e.target.value)}>
-                    <option value="">Select…</option>
-                    {US_STATES.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="vi-form-row">
-                <div className="vi-form-field"><span className="vi-form-label">Phone</span><input className="vi-input" value={addForm.phone} onChange={e => af('phone')(e.target.value)} /></div>
-                <div className="vi-form-field"><span className="vi-form-label">Email</span><input className="vi-input" value={addForm.email} onChange={e => af('email')(e.target.value)} /></div>
-              </div>
-              <div className="vi-form-row">
-                <div className="vi-form-field">
-                  <span className="vi-form-label">P&amp;C Licensing Type</span>
-                  <select className="vi-select" value={addForm.licReq} onChange={e => af('licReq')(e.target.value)}>
-                    {(pcLicOpts.length ? pcLicOpts : ['Separate', 'Combined']).map(o => <option key={o}>{o}</option>)}
-                  </select>
-                </div>
-                {addForm.licReq === 'Combined'
-                  ? <div className="vi-form-field"><span className="vi-form-label">Combined License</span><ProducerLicenseInput className={`vi-input${addErrors.combinedLicense ? ' fi--err' : ''}`} value={addForm.combinedLicense} onChange={af('combinedLicense')} /><FieldError message={addErrors.combinedLicense} /></div>
-                  : <div className="vi-form-field"><span className="vi-form-label">PL License</span><ProducerLicenseInput className={`vi-input${addErrors.plLicense ? ' fi--err' : ''}`} value={addForm.plLicense} onChange={af('plLicense')} /><FieldError message={addErrors.plLicense} /></div>
-                }
-              </div>
-              {addForm.licReq === 'Separate' && (
-                <div className="vi-form-row vi-form-row--1">
-                  <div className="vi-form-field"><span className="vi-form-label">CL License</span><ProducerLicenseInput className={`vi-input${addErrors.clLicense ? ' fi--err' : ''}`} value={addForm.clLicense} onChange={af('clLicense')} /><FieldError message={addErrors.clLicense} /></div>
-                </div>
-              )}
-              <div className="vi-form-row">
-                <div className="vi-form-field">
-                  <span className="vi-form-label">Is Manager</span>
-                  <label className="vi-toggle-wrap">
-                    <label className="vi-toggle">
-                      <input type="checkbox" checked={addForm.isManager} onChange={e => af('isManager')(e.target.checked)} />
-                      <span className="vi-toggle-slider" />
-                    </label>
-                    <span className="vi-toggle-label">{addForm.isManager ? 'Yes' : 'No'}</span>
-                  </label>
-                </div>
-                {!addForm.isManager && (
-                  <div className="vi-form-field">
-                    <span className="vi-form-label">Reports To</span>
-                    <select className="vi-select" value={addForm.reportsTo} onChange={e => af('reportsTo')(e.target.value)}>
-                      <option value="">—</option>
-                      {savedProducers.map(p => <option key={p.id} value={p.id}>{producerDisplayName(p.form)}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="vi-modal__foot">
-              <button className="vi-btn-cancel" onClick={() => setShowAddModal(false)}>Cancel</button>
-              <button className="vi-btn-save" onClick={addProducer}>Add Producer</button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
@@ -2072,7 +1905,10 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
 
 export default function ViewIntermediaryPage({ record: initialRecord, onBack }: ViewIntermediaryPageProps) {
   const [activeTab, setActiveTab] = useState<TabId>('details');
+  const [creatingProducer, setCreatingProducer] = useState(false);
+  const [producerAddRequests, setProducerAddRequests] = useState(0);
   const [record, setRecord] = useState<IntermediaryRecord>(initialRecord);
+
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'details',   label: 'Intermediary Details' },
@@ -2084,7 +1920,10 @@ export default function ViewIntermediaryPage({ record: initialRecord, onBack }: 
 
   return (
     <>
-      <main className={`app-page distribution-detail-page${activeTab === 'producers' ? ' vi-producers-page' : ''}`}>
+      {producerAddRequests > 0 && <div style={{ display: creatingProducer ? undefined : 'none' }}>
+        <AddProducersPage key={record.id} intermediaryId={Number(record.id)} addRequests={producerAddRequests} onBack={() => setCreatingProducer(false)} />
+      </div>}
+      {!creatingProducer && <main className={`app-page distribution-detail-page${activeTab === 'producers' ? ' vi-producers-page' : ''}`}>
         <div className="distribution-detail-header">
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
             <span style={{ cursor: 'pointer', color: '#0B5AA0' }} onClick={onBack}>Distribution Management</span>
@@ -2123,7 +1962,7 @@ export default function ViewIntermediaryPage({ record: initialRecord, onBack }: 
 
         {activeTab === 'producers' && (
           <>
-            <ProducersTab record={record} onRecordChange={setRecord} />
+            <ProducersTab record={record} onAddProducer={() => { setProducerAddRequests(value => value + 1); setCreatingProducer(true); }} />
             <footer className="vi-producer-footer"><button className="vi-btn-outline" onClick={onBack}>Back</button></footer>
           </>
         )}
@@ -2135,7 +1974,7 @@ export default function ViewIntermediaryPage({ record: initialRecord, onBack }: 
             <p className="vi-coming-soon__sub">Timeline view is under development.</p>
           </div>
         )}
-      </main>
+      </main>}
     </>
   );
 }

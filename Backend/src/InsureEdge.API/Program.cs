@@ -74,6 +74,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddScoped<InsureEdge.API.Services.ProducerDraftIds>();
 builder.Services.AddHttpContextAccessor();
 
 // --- Application Services ---
