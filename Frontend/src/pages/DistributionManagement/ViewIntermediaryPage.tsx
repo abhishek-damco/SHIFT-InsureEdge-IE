@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import { KeyRound, Search, Upload, UserRound, Pencil, ChevronsUp } from 'lucide-react';
+import { passwordResetApi } from '../../api/passwordReset';
+import './ProducerView.css';
 import type { IntermediaryRecord } from '../../types/Distribution';
 import { distributionApi as api } from '../../api/distribution';
 import SearchableSelect from '../../components/ui/SearchableSelect';
@@ -1416,7 +1419,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
 }) {
   const pcLicOpts = useDropdown('PCLICENSETYPE');
 
-  const [expanded,    setExpanded]    = useState(false);
+  const [expanded,    setExpanded]    = useState(true);
   const [editPrim,    setEditPrim]    = useState(false);
   const [editContact, setEditContact] = useState(false);
   const [editAddr,    setEditAddr]    = useState(false);
@@ -1425,9 +1428,84 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
   const [contactForm, setContactForm] = useState<any>({});
   const [addrForm,    setAddrForm]    = useState<any>({});
 
-  const f = producer.form ?? {};
+  const [resetting, setResetting] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+  const [address, setAddress] = useState<any>({});
+  const [states, setStates] = useState<any[]>([]);
+  const [addressError, setAddressError] = useState('');
+  const [statesError, setStatesError] = useState('');
+  const [loadingDetails, setLoadingDetails] = useState(true);
+  const [stateSearch, setStateSearch] = useState('');
+  const [showStateModal, setShowStateModal] = useState(false);
+  const [stateForm, setStateForm] = useState({ state: '', license: '' });
+  const [stateError, setStateError] = useState('');
+  const [savingState, setSavingState] = useState(false);
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingDetails(true);
+    Promise.allSettled([
+      api.producerAddress.get(Number(producer.id)),
+      api.producerNrStates.list(Number(producer.id)),
+    ]).then(([addr, nr]) => {
+      if (cancelled) return;
+      if (addr.status === 'fulfilled') {
+        const row = addr.value ?? {};
+        setAddress({ addrLine1: row.address_line1 ?? '', addrLine2: row.address_line2 ?? '',
+          addrCountry: row.country ?? '', addrState: row.state ?? '', city: row.city ?? '',
+          county: row.county ?? '', zipCode: row.zip_code ?? '', latitude: row.latitude ?? '', longitude: row.longitude ?? '' });
+        setAddressError('');
+      } else setAddressError('Office address could not be loaded.');
+      if (nr.status === 'fulfilled') { setStates(nr.value); setStatesError(''); }
+      else setStatesError('Non-resident states could not be loaded.');
+      setLoadingDetails(false);
+    });
+    return () => { cancelled = true; };
+  }, [producer.id]);
+
+  async function resetPassword() {
+    if (!producer.form?.email || resetting) return;
+    setResetting(true); setResetMessage('');
+    try {
+      const response = await passwordResetApi.request(producer.form.email);
+      setResetMessage(response.data?.message || 'Password reset requested.');
+    } catch { setResetMessage('Unable to request a password reset. Please try again.'); }
+    finally { setResetting(false); }
+  }
+
+  async function saveAddress() {
+    setSavingAddress(true);
+    try {
+      await api.producerAddress.create(Number(producer.id), {
+        address_line1: addrForm.addrLine1, address_line2: addrForm.addrLine2,
+        country: addrForm.addrCountry, state: addrForm.addrState, city: addrForm.city,
+        county: addrForm.county, zip_code: addrForm.zipCode,
+        latitude: addrForm.latitude || null, longitude: addrForm.longitude || null,
+      });
+      setAddress({ addrLine1: addrForm.addrLine1, addrLine2: addrForm.addrLine2,
+        addrCountry: addrForm.addrCountry, addrState: addrForm.addrState, city: addrForm.city,
+        county: addrForm.county, zipCode: addrForm.zipCode, latitude: addrForm.latitude, longitude: addrForm.longitude }); setAddressError(''); setEditAddr(false);
+    } catch { setAddressError('Office address could not be saved. Please try again.'); }
+    finally { setSavingAddress(false); }
+  }
+
+  async function addState() {
+    const licenseError = validateProducerLicense(stateForm.license);
+    if (!stateForm.state || licenseError) { setStateError(licenseError || 'Select a state.'); return; }
+    if (states.some(row => row.state === stateForm.state)) { setStateError('This state is already listed.'); return; }
+    setSavingState(true); setStateError('');
+    try {
+      const row = await api.producerNrStates.create(Number(producer.id), { state: stateForm.state, license_number: stateForm.license });
+      setStates(prev => [...prev, row]); setStatesError(''); setShowStateModal(false);
+    } catch { setStateError('The state could not be saved. Please try again.'); }
+    finally { setSavingState(false); }
+  }
+
+  const filteredStates = states.filter(row => [row.state, row.license_number, row.pl_license, row.cl_license, row.plcl_combined_license]
+    .some(value => String(value ?? '').toLowerCase().includes(stateSearch.trim().toLowerCase())));
+  const f = { ...producer.form, ...address };
   const name     = producerDisplayName(f);
-  const initials = [f.firstName?.[0], f.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?';
 
   function mergeAndSave(patch: any) {
     const updated = { ...producer, form: { ...f, ...patch } };
@@ -1474,79 +1552,65 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
     <div className={`vi-producer-card${expanded ? ' vi-producer-card--open' : ''}`}>
 
       {/* Card header */}
-      <div className="vi-producer-card__hdr" onClick={() => setExpanded(e => !e)}>
-        <div className="vi-producer-card__hdr-left">
-          <div className="vi-producer-card__expand">{expanded ? '−' : '+'}</div>
-          <div className="vi-avatar-placeholder" style={{ width: 36, height: 36, fontSize: 13 }}>
-            {f.profilePicUrl ? <img src={f.profilePicUrl} alt="profile" /> : initials}
-          </div>
-          <div>
-            <div className="vi-producer-card__name">{name}</div>
-            <div className="vi-producer-card__meta">
-              ID: {String(producer.id).slice(-8).toUpperCase()} · {f.residentState || '—'}
-            </div>
-          </div>
-        </div>
-        <span className={`badge ${f.status ? 'badge--active' : 'badge--inactive'}`}>
-          • {f.status ? 'Active' : 'Inactive'}
+      <button type="button" className="vi-producer-card__hdr" aria-expanded={expanded}
+        aria-controls={`producer-details-${producer.id}`} onClick={() => setExpanded(e => !e)}>
+        <span className="vi-producer-card__hdr-left">
+          <span className="vi-producer-card__expand" aria-hidden="true">{expanded ? '-' : '+'}</span>
+          <span className="vi-producer-card__name">{name}</span>
         </span>
-      </div>
+      </button>
 
       {/* Expanded body */}
       {expanded && (
-        <div className="vi-producer-card__body">
+        <div className="vi-producer-card__body" id={`producer-details-${producer.id}`}>
 
           {/* Left: Primary Information */}
           <div className="vi-producer-section">
-            <div className="vi-card__hdr" style={{ margin: '-14px -16px 12px', borderRadius: 0 }}>
+            <div className="vi-card__hdr">
               <span className="vi-card__title">Producer Primary Information</span>
               {!editPrim && (
-                <button className="vi-icon-btn" onClick={e => { e.stopPropagation(); setPrimForm({ ...f }); setPrimErrors({}); setEditPrim(true); }}>
-                  <PencilIcon />
+                <button className="vi-icon-btn" aria-label="Edit producer information" onClick={e => { e.stopPropagation(); setPrimForm({ ...f }); setPrimErrors({}); setEditPrim(true); }}>
+                  <Pencil size={14} strokeWidth={1.4} />
                 </button>
               )}
             </div>
             <div className="vi-prod-profile-row">
-              <div className="vi-avatar-placeholder" style={{ width: 48, height: 48 }}>
-                {f.profilePicUrl ? <img src={f.profilePicUrl} alt="" /> : initials}
+              <div className="vi-producer-portrait">
+                {f.profilePicUrl ? <img src={f.profilePicUrl} alt={`${name} profile`} /> : <UserRound size={64} strokeWidth={0} fill="currentColor" aria-hidden="true" />}
               </div>
             </div>
 
             {!editPrim ? (
               <div className="vi-field-grid">
-                <div className="vi-field"><span className="vi-label">First Name</span><span className="vi-value">{f.firstName || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Middle Name</span><span className="vi-value vi-value--muted">{f.middleName || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Last Name</span><span className="vi-value">{f.lastName || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Suffix</span><span className="vi-value vi-value--muted">{f.suffix || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Producer ID</span><span className="vi-value vi-value--mono">{String(producer.id).toUpperCase()}</span></div>
+                <div className="vi-field"><span className="vi-label">First Name</span><span className="vi-value">{f.firstName || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Middle / Initial Name</span><span className="vi-value vi-value--muted">{f.middleName || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Last Name</span><span className="vi-value">{f.lastName || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Suffix</span><span className="vi-value vi-value--muted">{f.suffix || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Producer ID</span><span className="vi-value vi-value--mono">{producer.code || producer.id}</span></div>
                 <div className="vi-field">
                   <span className="vi-label">Status</span>
-                  <span className={`badge ${f.status ? 'badge--active' : 'badge--inactive'}`}>• {f.status ? 'Active' : 'Inactive'}</span>
+                  <span className="vi-value">{f.status ? 'Active' : 'Inactive'}</span>
                 </div>
-                <div className="vi-field"><span className="vi-label">Country</span><span className="vi-value">{f.country || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Resident State</span><span className="vi-value">{f.residentState || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">P&amp;C Licensing Type</span><span className="vi-value">{f.licReq || '—'}</span></div>
-                {f.licReq === 'Combined'
-                  ? <div className="vi-field"><span className="vi-label">P&amp;C Combined License</span><span className="vi-value vi-value--mono">{f.combinedLicense || '—'}</span></div>
-                  : <>
-                      <div className="vi-field"><span className="vi-label">PL License</span><span className="vi-value vi-value--mono">{f.plLicense || '—'}</span></div>
-                      <div className="vi-field"><span className="vi-label">CL License</span><span className="vi-value vi-value--mono">{f.clLicense || '—'}</span></div>
-                    </>
-                }
+                <div className="vi-field"><span className="vi-label">Country</span><span className="vi-value">{f.country === 'USA' || f.country === 'US' ? 'United States' : f.country || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Residential State</span><span className="vi-value">{f.residentState || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">P&amp;C Licensing Type</span><span className="vi-value">{f.licReq || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">P&amp;C Combined License</span><span className="vi-value">{f.combinedLicense || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">PL License</span><span className="vi-value">{f.plLicense || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">CL License</span><span className="vi-value">{f.clLicense || '-'}</span></div>
                 <div className="vi-field"><span className="vi-label">Is Manager</span><span className="vi-value">{f.isManager ? 'Yes' : 'No'}</span></div>
                 <div className="vi-field">
                   <span className="vi-label">Reports To</span>
                   <span className="vi-value vi-value--muted">
                     {f.reportsTo
-                      ? producerDisplayName(allProducers.find(p => p.id === f.reportsTo)?.form ?? {}) || f.reportsTo
-                      : '—'}
+                      ? (allProducers.find(p => String(p.id) === String(f.reportsTo)) ? producerDisplayName(allProducers.find(p => String(p.id) === String(f.reportsTo)).form) : f.reportsTo)
+                      : '-'}
                   </span>
                 </div>
               </div>
             ) : (
               <div className="vi-field-grid">
                 <div className="vi-field"><span className="vi-label">First Name</span><input className="vi-input" value={primForm.firstName || ''} onChange={e => fp('firstName')(e.target.value)} /></div>
-                <div className="vi-field"><span className="vi-label">Middle Name</span><input className="vi-input" value={primForm.middleName || ''} onChange={e => fp('middleName')(e.target.value)} /></div>
+                <div className="vi-field"><span className="vi-label">Middle / Initial Name</span><input className="vi-input" value={primForm.middleName || ''} onChange={e => fp('middleName')(e.target.value)} /></div>
                 <div className="vi-field"><span className="vi-label">Last Name</span><input className="vi-input" value={primForm.lastName || ''} onChange={e => fp('lastName')(e.target.value)} /></div>
                 <div className="vi-field"><span className="vi-label">Suffix</span><input className="vi-input" value={primForm.suffix || ''} onChange={e => fp('suffix')(e.target.value)} /></div>
                 <div className="vi-field">
@@ -1561,7 +1625,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
                 </div>
                 <div className="vi-field"><span className="vi-label">Country</span><input className="vi-input" value={primForm.country || ''} onChange={e => fp('country')(e.target.value)} /></div>
                 <div className="vi-field">
-                  <span className="vi-label">Resident State</span>
+                  <span className="vi-label">Residential State</span>
                   <select className="vi-select" value={primForm.residentState || ''} onChange={e => fp('residentState')(e.target.value)}>
                     <option value="">Select…</option>
                     {US_STATES.map(s => <option key={s}>{s}</option>)}
@@ -1593,7 +1657,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
                 <div className="vi-field">
                   <span className="vi-label">Reports To</span>
                   <select className="vi-select" value={primForm.reportsTo || ''} onChange={e => fp('reportsTo')(e.target.value)}>
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {otherProducers.map(p => <option key={p.id} value={p.id}>{producerDisplayName(p.form)}</option>)}
                   </select>
                 </div>
@@ -1603,32 +1667,38 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
                 </div>
               </div>
             )}
-            <button className="vi-btn-reset" onClick={e => e.stopPropagation()}>🔒 Reset Producer Password</button>
+            <div className="vi-producer-reset">
+              <button className="vi-btn-reset" disabled={resetting || !f.email} onClick={resetPassword}>
+                <KeyRound size={15} />{resetting ? 'Requesting reset...' : 'Reset Producer Password'}
+              </button>
+              <p>Selecting the Reset User Password will generate an email to the user's registered email with a temporary password and password reset instructions</p>
+              {resetMessage && <p role="status">{resetMessage}</p>}
+            </div>
           </div>
 
           {/* Right: Contact Details + Office Address */}
           <div className="vi-producer-section">
-            <div className="vi-card__hdr" style={{ margin: '-14px -16px 12px', borderRadius: 0 }}>
+            <div className="vi-card__hdr">
               <span className="vi-card__title">Contact Details</span>
               {!editContact && (
-                <button className="vi-icon-btn" onClick={e => { e.stopPropagation(); setContactForm({ ...f }); setEditContact(true); }}>
-                  <PencilIcon />
+                <button className="vi-icon-btn" aria-label="Edit contact details" onClick={e => { e.stopPropagation(); setContactForm({ ...f }); setEditContact(true); }}>
+                  <Pencil size={14} strokeWidth={1.4} />
                 </button>
               )}
             </div>
             {!editContact ? (
               <div className="vi-field-grid">
-                <div className="vi-field"><span className="vi-label">Phone</span><span className="vi-value vi-value--mono">{f.phone || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Extension</span><span className="vi-value">{f.extension || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Alt Phone</span><span className="vi-value vi-value--mono">{f.altPhone || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Email</span><span className="vi-value vi-value--muted">{f.email || '—'}</span></div>
+                <div className="vi-field"><span className="vi-label">Telephone Number</span><span className="vi-value vi-value--mono">{f.phone ? [f.phoneCC, f.phone].filter(Boolean).join(' ') : '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Extension</span><span className="vi-value">{f.extension || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Alternative Telephone Number</span><span className="vi-value vi-value--mono">{f.altPhone ? [f.altPhoneCC, f.altPhone].filter(Boolean).join(' ') : '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Email ID</span><span className="vi-value vi-value--muted">{f.email || '-'}</span></div>
               </div>
             ) : (
               <div className="vi-field-grid">
-                <div className="vi-field"><span className="vi-label">Phone</span><input className="vi-input" value={contactForm.phone || ''} onChange={e => fc('phone')(e.target.value)} /></div>
+                <div className="vi-field"><span className="vi-label">Telephone Number</span><input className="vi-input" value={contactForm.phone || ''} onChange={e => fc('phone')(e.target.value)} /></div>
                 <div className="vi-field"><span className="vi-label">Extension</span><input className="vi-input" value={contactForm.extension || ''} onChange={e => fc('extension')(e.target.value)} /></div>
-                <div className="vi-field"><span className="vi-label">Alt Phone</span><input className="vi-input" value={contactForm.altPhone || ''} onChange={e => fc('altPhone')(e.target.value)} /></div>
-                <div className="vi-field"><span className="vi-label">Email</span><input className="vi-input" value={contactForm.email || ''} onChange={e => fc('email')(e.target.value)} /></div>
+                <div className="vi-field"><span className="vi-label">Alternative Telephone Number</span><input className="vi-input" value={contactForm.altPhone || ''} onChange={e => fc('altPhone')(e.target.value)} /></div>
+                <div className="vi-field"><span className="vi-label">Email ID</span><input className="vi-input" value={contactForm.email || ''} onChange={e => fc('email')(e.target.value)} /></div>
                 <div className="vi-edit-actions" style={{ gridColumn: '1 / -1' }}>
                   <button className="vi-btn-cancel" onClick={() => setEditContact(false)}>Cancel</button>
                   <button className="vi-btn-save" onClick={saveContactInformation}>Save</button>
@@ -1636,25 +1706,25 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
               </div>
             )}
 
-            <div className="vi-sub-title">Office Address</div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <div className="vi-card__hdr vi-producer-address-heading"><span className="vi-card__title">Office Address</span>
               {!editAddr && (
-                <button className="vi-icon-btn" onClick={e => { e.stopPropagation(); setAddrForm({ ...f }); setEditAddr(true); }}>
-                  <PencilIcon />
+                <button className="vi-icon-btn" aria-label="Edit office address" onClick={e => { e.stopPropagation(); setAddrForm({ ...f }); setEditAddr(true); }}>
+                  <Pencil size={14} strokeWidth={1.4} />
                 </button>
               )}
             </div>
+            {addressError && <p className="vi-producer-error" role="status">{addressError}</p>}
             {!editAddr ? (
-              <div className="vi-field-grid">
-                <div className="vi-field" style={{ gridColumn: '1 / -1' }}><span className="vi-label">Address Line 1</span><span className="vi-value">{f.addrLine1 || '—'}</span></div>
-                <div className="vi-field" style={{ gridColumn: '1 / -1' }}><span className="vi-label">Address Line 2</span><span className="vi-value vi-value--muted">{f.addrLine2 || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Country</span><span className="vi-value">{f.addrCountry || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">State</span><span className="vi-value">{f.addrState || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">City</span><span className="vi-value">{f.city || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">County</span><span className="vi-value vi-value--muted">{f.county || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Zip</span><span className="vi-value vi-value--mono">{f.zipCode || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Latitude</span><span className="vi-value vi-value--muted">{f.latitude || '—'}</span></div>
-                <div className="vi-field"><span className="vi-label">Longitude</span><span className="vi-value vi-value--muted">{f.longitude || '—'}</span></div>
+              <div className="vi-field-grid vi-producer-address-grid" aria-busy={loadingDetails}>
+                <div className="vi-field vi-address-line"><span className="vi-label">Address Line 1</span><span className="vi-value">{f.addrLine1 || '-'}</span></div>
+                <div className="vi-field vi-address-line"><span className="vi-label">Address Line 2</span><span className="vi-value vi-value--muted">{f.addrLine2 || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Country</span><span className="vi-value">{f.addrCountry || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">State</span><span className="vi-value">{f.addrState || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">City</span><span className="vi-value">{f.city || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">County</span><span className="vi-value vi-value--muted">{f.county || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Zip Code</span><span className="vi-value vi-value--mono">{f.zipCode || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Latitude</span><span className="vi-value vi-value--muted">{f.latitude || '-'}</span></div>
+                <div className="vi-field"><span className="vi-label">Longitude</span><span className="vi-value vi-value--muted">{f.longitude || '-'}</span></div>
               </div>
             ) : (
               <div className="vi-field-grid">
@@ -1670,48 +1740,53 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
                 </div>
                 <div className="vi-field"><span className="vi-label">City</span><input className="vi-input" value={addrForm.city || ''} onChange={e => fa('city')(e.target.value)} /></div>
                 <div className="vi-field"><span className="vi-label">County</span><input className="vi-input" value={addrForm.county || ''} onChange={e => fa('county')(e.target.value)} /></div>
-                <div className="vi-field"><span className="vi-label">Zip</span><input className="vi-input" value={addrForm.zipCode || ''} onChange={e => fa('zipCode')(e.target.value)} /></div>
+                <div className="vi-field"><span className="vi-label">Zip Code</span><input className="vi-input" value={addrForm.zipCode || ''} onChange={e => fa('zipCode')(e.target.value)} /></div>
                 <div className="vi-field"><span className="vi-label">Latitude</span><input className="vi-input" value={addrForm.latitude || ''} onChange={e => fa('latitude')(e.target.value)} /></div>
                 <div className="vi-field"><span className="vi-label">Longitude</span><input className="vi-input" value={addrForm.longitude || ''} onChange={e => fa('longitude')(e.target.value)} /></div>
                 <div className="vi-edit-actions" style={{ gridColumn: '1 / -1' }}>
                   <button className="vi-btn-cancel" onClick={() => setEditAddr(false)}>Cancel</button>
-                  <button className="vi-btn-save" onClick={() => { mergeAndSave(addrForm); setEditAddr(false); }}>Save</button>
+                  <button className="vi-btn-save" disabled={savingAddress} onClick={saveAddress}>{savingAddress ? 'Saving...' : 'Save'}</button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* NR States — full width */}
+          {/* NR States - full width */}
           <div className="vi-producer-nrstates">
-            <div className="vi-nr-title" style={{ marginBottom: 8 }}>Non-Resident State(s)</div>
-            <table className="vi-table">
-              <thead>
-                <tr>
-                  <th className="vi-td-num">#</th>
-                  <th>State Name</th>
-                  <th>P&amp;C Licensing Req</th>
-                  <th>P&amp;C Combined License</th>
-                  <th>PL License</th>
-                  <th>CL License</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(f.nrStates ?? []).length === 0
-                  ? <tr><td colSpan={6} className="vi-empty">No non-resident states.</td></tr>
-                  : (f.nrStates ?? []).map((s: any, i: number) => (
-                    <tr key={s.id ?? i}>
-                      <td className="vi-td-num">{i + 1}</td>
-                      <td>{s.state}</td>
-                      <td>{s.licReq || '—'}</td>
-                      <td className="vi-td-mono">{s.combinedLicense || '—'}</td>
-                      <td className="vi-td-mono">{s.plLicense || '—'}</td>
-                      <td className="vi-td-mono">{s.clLicense || '—'}</td>
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
+            <div className="vi-producer-nr-toolbar">
+              <h3 className="vi-nr-title">Non-Resident State(s)</h3>
+              <div className="vi-producer-nr-controls">
+                <label className="vi-producer-search"><Search size={14} aria-hidden="true" />
+                  <input aria-label="Search by state or License" placeholder="Search by state or License" value={stateSearch} onChange={e => setStateSearch(e.target.value)} />
+                </label>
+                <button className="vi-btn-primary" onClick={() => { setStateForm({ state: '', license: '' }); setStateError(''); setShowStateModal(true); }}>+ Add State</button>
+              </div>
+            </div>
+            {loadingDetails ? <p className="vi-producer-empty">Loading...</p>
+              : statesError ? <p className="vi-producer-error" role="status">{statesError}</p>
+              : filteredStates.length === 0 ? <p className="vi-producer-empty">No Data Available</p>
+              : <div className="vi-table-wrap"><table className="vi-table">
+                  <thead><tr><th>State</th><th>License Number</th><th>P&amp;C Combined License</th><th>PL License</th><th>CL License</th></tr></thead>
+                  <tbody>{filteredStates.map((row, index) => <tr key={row.id ?? index}>
+                    <td>{row.state}</td><td>{row.license_number || '-'}</td><td>{row.plcl_combined_license || '-'}</td>
+                    <td>{row.pl_license || '-'}</td><td>{row.cl_license || '-'}</td>
+                  </tr>)}</tbody>
+                </table></div>}
           </div>
+          {showStateModal && <div className="vi-modal-overlay" onClick={() => !savingState && setShowStateModal(false)}>
+            <div className="vi-modal vi-modal--sm" role="dialog" aria-modal="true" aria-label="Add Non-Resident State" onClick={e => e.stopPropagation()}>
+              <div className="vi-modal__hdr"><h3 className="vi-modal__title">Add Non-Resident State(s)</h3></div>
+              <div className="vi-modal__body">
+                <label className="vi-form-field">Non-Resident State<select className="vi-select" value={stateForm.state} onChange={e => setStateForm(prev => ({ ...prev, state: e.target.value }))}>
+                  <option value="">Select a state</option>{US_STATES.filter(state => state !== f.residentState).map(state => <option key={state}>{state}</option>)}
+                </select></label>
+                <label className="vi-form-field">License Number<ProducerLicenseInput className="vi-input" value={stateForm.license} onChange={license => setStateForm(prev => ({ ...prev, license }))} /></label>
+                {stateError && <p role="alert" className="vi-producer-error">{stateError}</p>}
+              </div>
+              <div className="vi-modal__foot"><button className="vi-btn-cancel" disabled={savingState} onClick={() => setShowStateModal(false)}>Cancel</button>
+                <button className="vi-btn-save" disabled={savingState} onClick={addState}>{savingState ? 'Saving...' : 'Add State'}</button></div>
+            </div>
+          </div>}
         </div>
       )}
     </div>
@@ -1724,6 +1799,9 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
 }) {
   const pcLicOpts = useDropdown('PCLICENSETYPE');
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
   const [producers,    setProducers]    = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
@@ -1733,20 +1811,23 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
   useEffect(() => {
     const iid = record.id as number;
     if (!iid) return;
+    let cancelled = false;
+    setLoading(true); setLoadError('');
     api.producers.listByIntermediary(iid).then((rows: any[]) => {
       const mapped = rows.map((p: any) => ({
         id:      p.id,
+        code: p.producer_code,
         saved:   true,
         expanded: false,
         errors:  {},
         form: {
           status:          p.status_toggle ?? (p.status === 'Active'),
-          profilePicUrl:   '',
+          profilePicUrl:   p.profile_pic_url ?? '',
           firstName:       p.first_name    ?? '',
           middleName:      p.middle_name   ?? '',
           lastName:        p.last_name     ?? '',
           suffix:          p.suffix        ?? '',
-          country:         p.country       ?? 'USA',
+          country:         p.country       ?? '',
           residentState:   p.residential_state ?? '',
           licReq:          p.pc_license_requirement ?? p.pc_licence_requirement ?? 'Separate',
           combinedLicense: p.plcl_combined_license  ?? '',
@@ -1754,18 +1835,23 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
           clLicense:       p.cl_license    ?? '',
           isManager:       p.is_manager    ?? false,
           reportsTo:       p.manager_id    ?? '',
+          phoneCC:         p.telephone_number_cc ?? '',
+          altPhoneCC:      p.alt_telephone_number_cc ?? '',
+          gender:          p.gender ?? '',
+          personalBio:     p.personal_bio ?? '',
           phone:           p.telephone_number      ?? '',
           extension:       p.extension             ?? '',
           altPhone:        p.alt_telephone_number  ?? '',
           email:           p.email                 ?? '',
-          addrLine1: '', addrLine2: '', addrCountry: 'USA',
+          addrLine1: '', addrLine2: '', addrCountry: '',
           addrState: '', city: '', county: '',
           zipCode: '', latitude: '', longitude: '',
           nrStates: [],
         },
       }));
-      setProducers(mapped);
-    }).catch(() => {});
+      if (!cancelled) { setProducers(mapped); setLoading(false); }
+    }).catch(() => { if (!cancelled) { setLoadError('Producers could not be loaded.'); setLoading(false); } });
+    return () => { cancelled = true; };
   }, [record.id]);
 
   async function updateProducer(updated: any) {
@@ -1785,6 +1871,10 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
       pl_license: form.licReq === 'Separate' ? (form.plLicense || null) : null,
       cl_license: form.licReq === 'Separate' ? (form.clLicense || null) : null,
       plcl_combined_license: form.licReq === 'Combined' ? (form.combinedLicense || null) : null,
+      telephone_number_cc: form.phoneCC || null,
+      alt_telephone_number_cc: form.altPhoneCC || null,
+      gender: form.gender || null,
+      personal_bio: form.personalBio || null,
       telephone_number: form.phone || null,
       alt_telephone_number: form.altPhone || null,
       extension: form.extension ? Number(form.extension) : null,
@@ -1823,7 +1913,7 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
       }
 
       const payload = {
-        intermediary_db_id:        iid,
+        intermediary_id:           iid,
         status:                    addForm.status ? 'Active' : 'Inactive',
         status_toggle:             addForm.status ?? true,
         first_name:                addForm.firstName,
@@ -1840,15 +1930,16 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
         telephone_number:          addForm.phone        || null,
         alt_telephone_number_cc:   null,
         alt_telephone_number:      addForm.altPhone     || null,
-        extension:                 addForm.extension    || null,
+        extension:                 addForm.extension ? Number(addForm.extension) : null,
         email:                     addForm.email        || null,
         is_manager:                addForm.isManager    ?? false,
-        manager_id:                addForm.reportsTo    || null,
+        manager_id:                addForm.reportsTo ? Number(addForm.reportsTo) : null,
         os_user_id,
       };
       const created = await api.producers.create(payload);
       const newProd = {
         id:      created.id,
+        code: created.producer_code,
         saved:   true,
         expanded: false,
         errors:  {},
@@ -1872,23 +1963,25 @@ function ProducersTab({ record, onRecordChange: _onRecordChange }: {
   const savedProducers = producers.filter(p => p.saved);
 
   return (
-    <div>
-      <div className="vi-producers-hdr">
-        <span style={{ fontSize: 13, color: '#6b7280' }}>{savedProducers.length} producer(s)</span>
-        <div className="vi-producers-hdr__actions">
-          <button className="vi-btn-outline" onClick={() => setShowBulkUpload(true)}>Producer Bulk Upload</button>
-          <button className="vi-btn-primary" onClick={() => { setAddForm({ ...EMPTY_PRODUCER_FORM }); setAddErrors({}); setShowAddModal(true); }}>
-            + Add Producers
-          </button>
-        </div>
-      </div>
+    <div className="vi-producers-view" ref={scrollRef}>
 
-      {savedProducers.length === 0
+      {loading ? <p className="vi-empty">Loading producers...</p> : loadError ? <p role="alert" className="vi-producer-error">{loadError}</p> : savedProducers.length === 0
         ? <p className="vi-empty">No producers added.</p>
         : savedProducers.map(p => (
             <ProducerCard key={p.id} producer={p} allProducers={producers} onUpdate={updateProducer} />
           ))
       }
+
+      <div className="vi-producers-hdr">
+        <div className="vi-producers-hdr__actions">
+          <button className="vi-btn-outline" onClick={() => setShowBulkUpload(true)}><Upload size={15} /> Producer Bulk Upload</button>
+          <button className="vi-btn-outline" onClick={() => { setAddForm({ ...EMPTY_PRODUCER_FORM }); setAddErrors({}); setShowAddModal(true); }}>
+            + Add Producers
+          </button>
+        </div>
+      </div>
+
+      <button className="vi-producer-top" aria-label="Back to top" onClick={() => scrollRef.current?.scrollTo({ top: 0 })}><ChevronsUp size={22} /><span>Top</span></button>
 
       {showBulkUpload && <BulkUploadModal onClose={() => setShowBulkUpload(false)} />}
 
@@ -1991,11 +2084,11 @@ export default function ViewIntermediaryPage({ record: initialRecord, onBack }: 
 
   return (
     <>
-      <main className="app-page distribution-detail-page">
+      <main className={`app-page distribution-detail-page${activeTab === 'producers' ? ' vi-producers-page' : ''}`}>
         <div className="distribution-detail-header">
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
             <span style={{ cursor: 'pointer', color: '#0B5AA0' }} onClick={onBack}>Distribution Management</span>
-            {' / '}Intermediary Details
+            {' / '}{activeTab === 'producers' ? 'View Intermediary' : 'Intermediary Details'}
           </div>
           <div className="distribution-detail-header__row">
             <div className="distribution-detail-title-wrap">
@@ -2029,7 +2122,10 @@ export default function ViewIntermediaryPage({ record: initialRecord, onBack }: 
         )}
 
         {activeTab === 'producers' && (
-          <ProducersTab record={record} onRecordChange={setRecord} />
+          <>
+            <ProducersTab record={record} onRecordChange={setRecord} />
+            <footer className="vi-producer-footer"><button className="vi-btn-outline" onClick={onBack}>Back</button></footer>
+          </>
         )}
 
         {activeTab === 'timeline' && (
