@@ -8,7 +8,10 @@ export default defineConfig({
     {
       name: 'copy-render-redirects',
       closeBundle() {
-        fs.copyFileSync('_redirects', 'dist/_redirects');
+        fs.copyFileSync(
+          new URL('./_redirects', import.meta.url),
+          new URL('./dist/_redirects', import.meta.url),
+        );
       },
     },
   ],
