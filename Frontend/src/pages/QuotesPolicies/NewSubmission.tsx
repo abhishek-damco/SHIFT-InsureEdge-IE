@@ -11,6 +11,25 @@ import type { UserSelectDto } from '../../types/User';
 import { quotesPoliciesApi } from '../../api/quotesPolicies';
 import { distributionApi } from '../../api/distribution';
 import api from '../../api/client';
+import { latLngToCell } from 'h3-js';
+import type { HbisRatingOutputDto, HbTaxDetailsDto } from '../../types/Policy';
+
+// Hex Zone IDs (HexCat Provided Risk Information Location) — derived from the risk
+// location's lat/long via H3. LR (Low Resolution, res 4) keys hb_rater_lr_hexzones;
+// HR (High Resolution, res 5) keys hb_rater_hr_hexzone. Returns '' for either code if
+// lat/long aren't valid numbers yet (matches the hexzone tables' seeded H3 resolutions).
+function computeHexZones(latitude: string, longitude: string): { hexZoneLR: string; hexZoneHR: string } {
+  const lat = Number(latitude);
+  const lon = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+    return { hexZoneLR: '', hexZoneHR: '' };
+  }
+  try {
+    return { hexZoneLR: latLngToCell(lat, lon, 4), hexZoneHR: latLngToCell(lat, lon, 5) };
+  } catch {
+    return { hexZoneLR: '', hexZoneHR: '' };
+  }
+}
 
 // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ State tax matrix (Source: State tax matrix_v2.xlsx) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 const STATE_TAX: Record<string, { sl: number; stamp: number; fire: number; flatStamp?: true }> = {
@@ -2258,6 +2277,18 @@ function StepLocation({ form, set, locations, setLocations }: {
     };
   }
 
+  // Syncs the risk location's own coordinates into the top-level lat/long + hex zone
+  // fields the rater DTO reads (HbisPlanComparisonForm.Latitude/Longitude/HexZoneLR) —
+  // these can otherwise be stale/blank when the risk location differs from the mailing
+  // address, or when "same as mailing" wasn't used.
+  function applyHexZones(loc: Pick<LocationItem, 'latitude' | 'longitude'>) {
+    set('latitude', loc.latitude);
+    set('longitude', loc.longitude);
+    const { hexZoneLR, hexZoneHR } = computeHexZones(loc.latitude, loc.longitude);
+    set('hexZoneLR', hexZoneLR);
+    set('hexZoneHR', hexZoneHR);
+  }
+
   function handleSameAsMailing(checked: boolean) {
     if (!checkboxEnabled) return;
     set('locationSameAsMailing', checked);
@@ -2265,7 +2296,9 @@ function StepLocation({ form, set, locations, setLocations }: {
     setDeleteId(null);
     setShowAdd(false);
     if (checked) {
-      setLocations([mailingLocation()]);
+      const loc = mailingLocation();
+      setLocations([loc]);
+      applyHexZones(loc);
     } else {
       setLocations([]);
     }
@@ -2273,17 +2306,21 @@ function StepLocation({ form, set, locations, setLocations }: {
 
   function addLocation(loc: Omit<LocationItem, 'id'>) {
     setLocations([{ id: Date.now(), ...loc }]);
+    applyHexZones(loc);
     setShowAdd(false);
   }
   function editLocation(id: number, loc: Omit<LocationItem, 'id'>) {
     if (!canEditLocation) return;
     setLocations(prev => prev.map(l => l.id === id ? { id, ...loc } : l));
+    applyHexZones(loc);
     setEditId(null);
   }
   function deleteLocation() {
     if (!canEditLocation) { setDeleteId(null); return; }
     setLocations(prev => prev.filter(l => l.id !== deleteId));
     set('locationSameAsMailing', false);
+    set('hexZoneLR', '');
+    set('hexZoneHR', '');
     setDeleteId(null);
   }
 
@@ -2768,6 +2805,10 @@ function StepPlans({ form, set }: { form: FormState; set: (k: keyof FormState, v
     lockSubmission: scenarioForm.lockSubmission,
     isHBProducer: scenarioForm.isHBProducer,
     isQuickQuote: scenarioForm.isQuickQuote,
+    hexZoneLR: scenarioForm.hexZoneLR,
+    hexZoneHR: scenarioForm.hexZoneHR,
+    latitude: scenarioForm.latitude,
+    longitude: scenarioForm.longitude,
   });
 
   useEffect(() => {
@@ -3255,14 +3296,76 @@ function StepFinalize({
   const selectedPlan = planRows.find(p => p.id === selectedPlanId(scenarioForm.selectedPlan)) || planRows[0];
   const planTotal = selectedPlan.total;
   const POLICY_FEE = numberValue(valueOrFallback(scenarioForm.policyFee, '195'));
-  const coveragePremium = planTotal - POLICY_FEE;
+  const localCoveragePremium = planTotal - POLICY_FEE;
   const tax = STATE_TAX[form.state] || { sl: 0, stamp: 0, fire: 0, flatStamp: false };
-  const surplusTax = planTotal * (tax.sl || 0);
-  const fireTax = planTotal * (tax.fire || 0);
-  const totalTax = surplusTax + fireTax;
-  const stampingFee = tax.flatStamp ? (tax.stamp || 0) : planTotal * (tax.stamp || 0);
-  const totalFees = POLICY_FEE + stampingFee;
+  const localSurplusTax = planTotal * (tax.sl || 0);
+  const localFireTax = planTotal * (tax.fire || 0);
+  const localTotalTax = localSurplusTax + localFireTax;
+  const localStampingFee = tax.flatStamp ? (tax.stamp || 0) : planTotal * (tax.stamp || 0);
+  const localTotalFees = POLICY_FEE + localStampingFee;
+
+  // Real backend-rated Coverage Premium/Taxes for the selected plan — StepFinalize previously
+  // only ever used the static local fallback above (same one Plans Overview falls back to when
+  // the rater is unreachable), so it never reflected the real Rater engine even once Plans
+  // Overview itself was fixed to prefer backend values. Coverage Premium = ratingOutput's
+  // totalPremiumWithoutTaxes (BasicCoveragePremium - PolicyFee); Taxes are computed off the
+  // full BasicCoveragePremium (totalPremiumWithFee), matching production exactly.
+  const [backendRatingOutput, setBackendRatingOutput] = useState<HbisRatingOutputDto | null>(null);
+  const [backendTax, setBackendTax] = useState<HbTaxDetailsDto | null>(null);
+
+  // Same pitfall as StepPlans' planComparisonSignature: a narrow dependency list (e.g. just
+  // selectedPlan/coverageLevel) fires once against a stale/incomplete `form` before
+  // hexZoneLR/dwelling/lat-long finish loading and then never re-fires, silently landing on the
+  // static fallback (recognizable by its telltale $9,820 Basic total) instead of the real rater.
+  const finalizeRatingSignature = JSON.stringify({
+    screenCode: scenarioForm.screenCode, policyType: scenarioForm.policyType,
+    dwellingLimit: scenarioForm.dwellingLimit, appurtenantLimit: scenarioForm.appurtenantLimit,
+    personalAssetsLimit: scenarioForm.personalAssetsLimit, occupancyDisruptionLimit: scenarioForm.occupancyDisruptionLimit,
+    deductible: scenarioForm.deductible, liabilityAmount: scenarioForm.liabilityAmount,
+    excessBlanketLiabilities: scenarioForm.excessBlanketLiabilities, sinkhole: scenarioForm.sinkhole,
+    earthquake: scenarioForm.earthquake, flood: scenarioForm.flood, windHail: scenarioForm.windHail,
+    wildfire: scenarioForm.wildfire, resWorkerMedical: scenarioForm.resWorkerMedical,
+    farmingEndorsement: scenarioForm.farmingEndorsement, landlordEndorsement: scenarioForm.landlordEndorsement,
+    homeOfficeEndorsement: scenarioForm.homeOfficeEndorsement, priorPolicyPremium: scenarioForm.priorPolicyPremium,
+    rateModification: scenarioForm.rateModification, selectedPlan: scenarioForm.selectedPlan,
+    coverageLevel: scenarioForm.coverageLevel, policyFee: scenarioForm.policyFee,
+    lockSubmission: scenarioForm.lockSubmission, isHBProducer: scenarioForm.isHBProducer,
+    isQuickQuote: scenarioForm.isQuickQuote, hexZoneLR: scenarioForm.hexZoneLR,
+    hexZoneHR: scenarioForm.hexZoneHR, latitude: scenarioForm.latitude, longitude: scenarioForm.longitude,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const computedTotal = formatNumberValue(totalInsuredValue(scenarioForm));
+    quotesPoliciesApi.getPlanComparison({ ...scenarioForm, totalInsuredValues: computedTotal })
+      .then(data => {
+        if (cancelled) return;
+        const plan = data.plans.find(p => p.id === selectedPlanId(scenarioForm.selectedPlan)) ?? data.plans[0];
+        setBackendRatingOutput(plan?.ratingOutput ?? null);
+      })
+      .catch(() => { if (!cancelled) setBackendRatingOutput(null); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submissionId, finalizeRatingSignature]);
+
+  useEffect(() => {
+    if (!backendRatingOutput || !form.state) { setBackendTax(null); return; }
+    let cancelled = false;
+    quotesPoliciesApi.getTaxDetails(form.state, backendRatingOutput.totalPremiumWithFee, backendRatingOutput.policyFee)
+      .then(data => { if (!cancelled) setBackendTax(data); })
+      .catch(() => { if (!cancelled) setBackendTax(null); });
+    return () => { cancelled = true; };
+  }, [backendRatingOutput, form.state]);
+
+  const coveragePremium = backendRatingOutput?.totalPremiumWithoutTaxes ?? localCoveragePremium;
+  const totalTax = backendTax?.totalTax ?? localTotalTax;
+  const stampingFee = backendTax?.stampingFee ?? localStampingFee;
+  const totalFees = backendRatingOutput
+    ? backendRatingOutput.policyFee + (backendTax?.stampingFee ?? 0)
+    : localTotalFees;
   const totalPremium = coveragePremium + totalTax + totalFees;
+  const surplusTax = backendTax?.surplusLinesTax ?? localSurplusTax;
+  const fireTax = backendTax?.firePremiumTax ?? localFireTax;
 
   // â”€â”€ Data loaded from DB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [commissionPct, setCommissionPct] = useState(12);

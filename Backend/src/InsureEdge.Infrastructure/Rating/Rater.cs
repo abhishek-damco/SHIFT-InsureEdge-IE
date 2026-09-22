@@ -31,7 +31,6 @@ public class Rater
 
     private static decimal Round0(decimal v) => Math.Round(v, 0, MidpointRounding.ToEven);
     private static decimal Round2(decimal v) => Math.Round(v, 2, MidpointRounding.ToEven);
-    private static decimal Round3(decimal v) => Math.Round(v, 3, MidpointRounding.ToEven);
     private static long TextToInteger(string? s) => long.TryParse((s ?? "").Trim(), out var n) ? n : 0;
     private static decimal TextToDecimal(string? s) =>
         decimal.TryParse((s ?? "").Trim(), System.Globalization.NumberStyles.Any,
@@ -194,14 +193,18 @@ public class Rater
         // If ClaculateRateModification and (Inputs.PriorPolicyPerodPremiumi <> ""
         //    or Inputs.PriorPolicyPerodPremiumi <> 0)?
         //   True  → RateModification (A4) → Inputs.RateModification = result;
-        //           RatingOutput.RateModification = (Round(result, 3))
+        //           RatingOutput.RateModification = (Round(result, 2))
         //   False → RatingOutput.RateModification = Inputs.RateModification
+        // Corrected 2026-09-22 against a live OutSystems debug trace: Round(...,3) was a
+        // miscapture — the trace's RateModification_EX (29.18) and the resulting
+        // TotalPremiumAmount (25503, not 25500) only reconcile with 2-decimal rounding here;
+        // verified exact across all three tiers (Basic/Standard/Preferred) against production.
         var priorText = inputs.PriorPolicyPerodPremiumi.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (claculateRateModification && (priorText != "" || inputs.PriorPolicyPerodPremiumi != 0m))
         {
             var rm = RaterFunctions.RateModification(inputs.PriorPolicyPerodPremiumi, o.BasicCoveragePremium);
             inputs.RateModification = rm;
-            o.RateModification = Round3(rm);
+            o.RateModification = Round2(rm);
         }
         else
         {
@@ -211,15 +214,18 @@ public class Rater
         // Final Assign:
         //   BasicCoveragePremiumWithoutRateModification = Round(BasicCoveragePremium)
         //   BasicCoveragePremium = Round(RateModification * BasicCoveragePremium)
-        //   BasePremiumWithoutAdditionalCoverage = Round(If((BasicCoveragePremium - components)<0,
-        //       0, (BasicCoveragePremium - components)), 2)
+        //   BasePremium (GetBasicRaterAPI.OnAfterFetch, confirmed against production
+        //     2026-09-22) = TotalPremiumAmount - (Wildfire+Wind+Sinkhole+ExcessSchedule
+        //     +Earthquake+Flood+SmallScalefarming+ResidentWorkerNF+LandEndorsement
+        //     +HomeOffice+PolicyFee) — LiabilityPremium is NOT subtracted here, unlike the
+        //     earlier (wrong) capture of this formula.
         o.BasicCoveragePremiumWithoutRateModification = Round0(o.BasicCoveragePremium);
         o.BasicCoveragePremium = Round0(o.RateModification * o.BasicCoveragePremium);
         var components = o.WildfirePremium + o.WindPremium + o.SinkholePremium
             + o.EarthquakePremium + o.FloodPremium + o.ExcessScheduleBlanketCoveredPL
             + o.ResidentWorkerNFPremium + o.SmallScalefarmingEndorsementPremium
             + o.LandEndorsementPremium + o.HomeOfficeEndorsementPremium
-            + o.LiabilityPremium + o.PolicyFee;
+            + o.PolicyFee;
         var baseWo = o.BasicCoveragePremium - components;
         o.BasePremiumWithoutAdditionalCoverage = Round2(baseWo < 0m ? 0m : baseWo);
 

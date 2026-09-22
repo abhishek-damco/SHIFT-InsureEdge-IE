@@ -14,6 +14,7 @@
 using InsureEdge.Application.DTOs.QuotesPolicies;
 using InsureEdge.Application.Interfaces;
 using InsureEdge.Infrastructure.Data;
+using InsureEdge.Infrastructure.Rating;
 using Microsoft.EntityFrameworkCore;
 
 namespace InsureEdge.Infrastructure.Repositories;
@@ -21,8 +22,23 @@ namespace InsureEdge.Infrastructure.Repositories;
 public class RatingRepository : IRatingRepository
 {
     private readonly InsureEdgeDbContext _db;
+    private readonly HbisPlanComparisonChart _chart;
 
-    public RatingRepository(InsureEdgeDbContext db) => _db = db;
+    public RatingRepository(InsureEdgeDbContext db, HbisPlanComparisonChart chart)
+    {
+        _db = db;
+        _chart = chart;
+    }
+
+    // See IRatingRepository.CalculatePlanComparisonAsync — mirrors the branch in
+    // RatingController.PlanComparison so any caller (not just the wizard endpoint) gets
+    // real hexzone/wildfire-raster rated premiums when hexzone data is available.
+    public async Task<HbisPlanComparisonResultDto> CalculatePlanComparisonAsync(HbisPlanComparisonForm form)
+    {
+        if (!string.IsNullOrWhiteSpace(form.HexZoneLR))
+            return await _chart.BuildAsync(form);
+        return CalculatePlanComparison(form);
+    }
 
     // ── Static rating tables (ported verbatim from server.js) ──────────────────
 

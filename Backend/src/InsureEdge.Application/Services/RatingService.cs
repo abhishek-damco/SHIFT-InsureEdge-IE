@@ -18,6 +18,9 @@ public class RatingService
     public HbisPlanComparisonResultDto CalculatePlanComparison(HbisPlanComparisonForm form)
         => _repo.CalculatePlanComparison(form);
 
+    public Task<HbisPlanComparisonResultDto> CalculatePlanComparisonAsync(HbisPlanComparisonForm form)
+        => _repo.CalculatePlanComparisonAsync(form);
+
     public Task<HbTaxDetailsDto> GetHbTaxDetailsAsync(string state, decimal premiumValue, decimal policyFee)
         => _repo.GetHbTaxDetailsAsync(state, premiumValue, policyFee);
 }

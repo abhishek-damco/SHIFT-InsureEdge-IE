@@ -5,9 +5,13 @@
 //   Start → Rater(Inputs = LimitCoverage→RatingInputs mapping, CoverageLevel = tier,
 //           ClaculateRateModification = False, ClaculateRecurringRPS = False)
 //        → Assign LimitsAndCoveragesValue = RatingOutput→chart mapping → End
-// Captured output mapping: TotalPremiumAmount = BasicCoveragePremium;
-//   BasePremium = OtherPerils + LiabilityPremium; per-peril *Value fields from the
-//   matching RatingOutput premiums; RPSValue = WildfireRPS.
+// Captured output mapping (corrected 2026-09-22 against "Rater Action — IERatingEngine
+// Flow Analysis" doc): TotalPremiumAmount = BasicCoveragePremium; BasePremium =
+// BasePremiumWithoutAdditionalCoverage (BasicCoveragePremium minus every visible Plans
+// Overview line item — Wildfire/Wind/Sinkhole/Earthquake/Flood/ExcessLiability/
+// endorsements/Liability/PolicyFee — floored at 0; NOT "OtherPerils + LiabilityPremium",
+// which was an earlier miscapture and produced far too small a Base Premium); per-peril
+// *Value fields from the matching RatingOutput premiums; RPSValue = WildfireRPS.
 // Input mapping detail preserved: the original passes entity numerics through
 // TextToInteger/TextToDecimal (unformatted); our wizard stores display-formatted
 // strings ("5,000"), so values are digit-normalized before mapping.
@@ -39,6 +43,13 @@ public class HbisPlanComparisonChart
         var totalInsured = Num(form.DwellingLimit) + Num(form.AppurtenantLimit)
             + Num(form.PersonalAssetsLimit) + Num(form.OccupancyDisruptionLimit);
 
+        // RateModification is computed ONCE (against the Basic tier's premium) and then reused
+        // as-is for Standard/Preferred — confirmed against a live OutSystems debug trace: with it
+        // recomputed independently per tier, Standard/Preferred came out LOWER than Basic (each
+        // tier's larger pre-modification premium shrinks its own freshly-computed factor), the
+        // opposite of production. Reusing Basic's factor reproduces production's numbers exactly.
+        decimal? sharedRateModification = null;
+
         foreach (var tier in Tiers)
         {
             // LimitCoverage → RatingInputs (captured mapping, per tier)
@@ -59,7 +70,8 @@ public class HbisPlanComparisonChart
                 LandloardEndorsement = form.LandlordEndorsement ?? "",
                 HomeOfficeEndorsement = form.HomeOfficeEndorsement ?? "",
                 PriorPolicyPerodPremiumi = Num(form.PriorPolicyPremium),       // TextToDecimal(PriorPolicyPeriodPremium)
-                RateModification = Num(form.RateModification) == 0m ? 1m : Num(form.RateModification), // RateModification_EX
+                RateModification = sharedRateModification
+                    ?? (Num(form.RateModification) == 0m ? 1m : Num(form.RateModification)), // RateModification_EX
                 HRHexZones = form.HexZoneHR ?? "",                             // HexZoneIdHiger
                 LRHexzones = form.HexZoneLR ?? "",                             // HexZoneIdLower
                 BuildingfloodElevation = Digits(form.BuildingFloodElevation),
@@ -71,13 +83,20 @@ public class HbisPlanComparisonChart
                 PolicyFeesNew = Num(form.PolicyFee),
             };
 
-            // ClaculateRateModification = False, ClaculateRecurringRPS = False (captured)
-            var o = await _rater.RateAsync(inputs, claculateRateModification: false, claculateRecurringRps: false);
+            // ClaculateRateModification = True (corrected 2026-09-22 against live OutSystems
+            // debug trace — the earlier "False" capture was wrong: production evaluates rate
+            // modification here whenever PriorPolicyPerodPremiumi is set, confirmed by a live
+            // trace producing RateModification=29.18 for PriorPolicyPeriodPremium=30000,
+            // TotalPremiumWithoutRateModification=874, which reproduces the exact production
+            // Base Premium ($24,764.81) once applied. ClaculateRecurringRPS stays False —
+            // unrelated to this bug, not something the trace touched.
+            var o = await _rater.RateAsync(inputs, claculateRateModification: sharedRateModification == null, claculateRecurringRps: false);
+            sharedRateModification ??= o.RateModification;
 
             plans.Add(new HbisPlanDto(
                 Id: tier.Id,
                 Name: tier.Name,
-                BasePremium: o.OtherPerils + o.LiabilityPremium,               // captured: BasePremium = OtherPerils + LiabilityPremium
+                BasePremium: o.BasePremiumWithoutAdditionalCoverage,          // corrected: BasePremium = RatingOutput.BasePremiumWithoutAdditionalCoverage
                 Wildfire: o.WildfirePremium,
                 WindHail: o.WindPremium,
                 Sinkhole: o.SinkholePremium,
@@ -116,7 +135,7 @@ public class HbisPlanComparisonChart
                     form.LockSubmission ?? false,
                     form.IsQuickQuote ?? false),
                 RatingOutput: new HbisRatingOutputDto(
-                    o.OtherPerils + o.LiabilityPremium,
+                    o.BasePremiumWithoutAdditionalCoverage,
                     o.WildfirePremium,
                     o.WindPremium,
                     o.SinkholePremium,

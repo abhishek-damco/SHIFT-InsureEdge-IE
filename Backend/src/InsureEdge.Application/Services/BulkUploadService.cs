@@ -24,6 +24,8 @@
 // additional_organisation by SubmissionRepository.
 using System.Text;
 using System.Text.Json;
+using H3Lib;
+using H3Lib.Extensions;
 using InsureEdge.Application.DTOs.QuotesPolicies;
 using InsureEdge.Application.Interfaces;
 
@@ -85,7 +87,7 @@ public class BulkUploadService
             var row = rows[i];
             try
             {
-                var form = BuildSubmissionForm(row, _ratingService);
+                var form = await BuildSubmissionFormAsync(row, _ratingService);
                 var locations = BuildLocations(form);
                 var mortgages = BuildMortgages(row);
                 var additionalInsureds = BuildAdditionalInsureds(row);
@@ -115,7 +117,31 @@ public class BulkUploadService
         return new BulkUploadResultDto(audit.Id, rows.Count, successCount, failureCount, status);
     }
 
-    private static Dictionary<string, object?> BuildSubmissionForm(string?[] row, RatingService ratingService)
+    // Hex Zone IDs (HexCat Provided Risk Information Location) — derived from the risk
+    // address's lat/long via H3, same convention as the wizard's client-side computation
+    // (NewSubmission.tsx computeHexZones): LR (Low Resolution, res 4) keys
+    // hb_rater_lr_hexzones; HR (High Resolution, res 5) keys hb_rater_hr_hexzone. H3Lib's
+    // H3Index.ToString() pads to 16 hex chars with a reserved leading zero nibble — trimmed
+    // here to match the canonical 15-char form used everywhere else (h3-js, the seeded
+    // hexzone tables).
+    private static (string HexZoneLR, string HexZoneHR) ComputeHexZones(string? latitude, string? longitude)
+    {
+        if (!decimal.TryParse(latitude, out var lat) || !decimal.TryParse(longitude, out var lon) || (lat == 0 && lon == 0))
+            return ("", "");
+        try
+        {
+            var geo = new GeoCoord(lat.DegreesToRadians(), lon.DegreesToRadians());
+            var lr = Api.GeoToH3(geo, 4).ToString().TrimStart('0');
+            var hr = Api.GeoToH3(geo, 5).ToString().TrimStart('0');
+            return (lr, hr);
+        }
+        catch
+        {
+            return ("", "");
+        }
+    }
+
+    private static async Task<Dictionary<string, object?>> BuildSubmissionFormAsync(string?[] row, RatingService ratingService)
     {
         string? Get(int col) => col < row.Length ? Norm(row[col]) : null;
 
@@ -195,6 +221,7 @@ public class BulkUploadService
         var addrZip = riskIsSame ? Get(BulkUploadColumns.MailZip) : Get(BulkUploadColumns.RiskZip);
         var addrLongitude = riskIsSame ? Get(BulkUploadColumns.MailLongitude) : Get(BulkUploadColumns.RiskLongitude);
         var addrLatitude = riskIsSame ? Get(BulkUploadColumns.MailLatitude) : Get(BulkUploadColumns.RiskLatitude);
+        var (hexZoneLR, hexZoneHR) = ComputeHexZones(addrLatitude, addrLongitude);
 
         // Calculate coverage limits based on Dwelling Limit (per PRD line 203-206)
         var dwellingLimitStr = FormatThousands(Get(BulkUploadColumns.DwellingAssetLimit));
@@ -231,6 +258,8 @@ public class BulkUploadService
             ["zip"] = addrZip,
             ["longitude"] = addrLongitude,
             ["latitude"] = addrLatitude,
+            ["hexZoneLR"] = hexZoneLR,
+            ["hexZoneHR"] = hexZoneHR,
 
             // Coverage limits (synced onto policy_limit_coverage). Deductible/Liability/
             // ExcessBlanket/Earthquake/Flood are looked up by RatingRepository as exact
@@ -302,11 +331,16 @@ public class BulkUploadService
                 BuildingType: form["buildingType"] as string,
                 BuildingDescription: form["buildingDescription"] as string,
                 Latitude: form["latitude"] as string,
-                Longitude: form["longitude"] as string
+                Longitude: form["longitude"] as string,
+                HexZoneHR: form["hexZoneHR"] as string,
+                HexZoneLR: form["hexZoneLR"] as string
             );
 
-            var ratingResult = ratingService.CalculatePlanComparison(ratingForm);
-            Console.WriteLine($"=== RATER FALLBACK OUTPUT ===");
+            // Routes through the real hexzone/wildfire-raster Rater when HexZoneLR is
+            // populated (see IRatingRepository.CalculatePlanComparisonAsync); previously this
+            // always called the static fallback table regardless of address data.
+            var ratingResult = await ratingService.CalculatePlanComparisonAsync(ratingForm);
+            Console.WriteLine($"=== RATER OUTPUT ===");
             Console.WriteLine($"Plans Count: {ratingResult?.Plans?.Count ?? 0}");
             if (ratingResult?.Plans?.Count > 0)
             {
@@ -317,7 +351,11 @@ public class BulkUploadService
                 if (basicPlan?.RatingOutput != null)
                 {
                     form["basePremium"] = basicPlan.RatingOutput.BasePremium;
-                    form["rateModification"] = basicPlan.RatingOutput.BasePremium * 1m; // RateModification = BasicCoveragePremium * RateModificationFactor
+                    // NOTE: was previously `basicPlan.RatingOutput.BasePremium * 1m` — that wrote the
+                    // dollar premium into the rate-modification FACTOR field. Rater.cs treats any
+                    // nonzero RateModification as an active multiplier on the whole premium, so this
+                    // silently inflated every bulk-uploaded submission's premium by ~100x on reload.
+                    form["rateModification"] = 0m; // neutral — Rater.cs treats 0 as "no modification" (defaults to factor 1)
                     form["wildfirePremium"] = basicPlan.RatingOutput.WildfirePremium;
                     form["windPremium"] = basicPlan.RatingOutput.WindPremium;
                     form["sinkholePremium"] = basicPlan.RatingOutput.SinkholePremium;

@@ -20,11 +20,6 @@ public class RatingController : ControllerBase
 
     public RatingController(RatingService rating) => _rating = rating;
 
-    // TEMPORARILY DISABLED (3 endpoints) — PlanComparison, Rate, HBPolicyTaxDetails depend on
-    // InsureEdge.Infrastructure.Rating namespace (HbisPlanComparisonChart, RatingInputs, Rater,
-    // RaterFunctions) that do not exist. See VERSIONS.md.
-    // NOTE: LimitsAndCoverages IS enabled below (needed by Finalize Quote screen).
-    /*
     [HttpPost("plan-comparison")]
     [Permission("NBQUOTESSCREEN", PermissionType.View)]
     public async Task<IActionResult> PlanComparison(
@@ -98,7 +93,6 @@ public class RatingController : ControllerBase
             return StatusCode(500, new { error = ex.Message });
         }
     }
-    */
 
     // GetHBISLimitsandCoverages (IE_Policy_CS server action) — data source of the
     // Limits & Coverages screen; applies the captured empty-value defaults.

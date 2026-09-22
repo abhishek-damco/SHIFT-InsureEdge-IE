@@ -5,6 +5,9 @@
 using InsureEdge.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace InsureEdge.Infrastructure.Rating;
 
@@ -12,11 +15,15 @@ public class RaterFunctions
 {
     private readonly InsureEdgeDbContext _db;
     private readonly IMemoryCache _cache;
+    private readonly ILogger<RaterFunctions> _log;
+    private readonly string? _rpsRasterConnectionString;
 
-    public RaterFunctions(InsureEdgeDbContext db, IMemoryCache cache)
+    public RaterFunctions(InsureEdgeDbContext db, IMemoryCache cache, IConfiguration config, ILogger<RaterFunctions> log)
     {
         _db = db;
         _cache = cache;
+        _log = log;
+        _rpsRasterConnectionString = config.GetConnectionString("RpsRaster");
     }
 
     // WildfireModificationValue (captured flow):
@@ -158,26 +165,48 @@ public class RaterFunctions
     //     FROM {rps_raster} r
     //     WHERE ST_Intersects(r.rast, ST_Transform(ST_SetSRID(ST_MakePoint(@lon,@lat),4326),5070)) LIMIT 1
     //   ⚠ DEPENDENCY: requires the PostGIS + postgis_raster extensions and the wildfire
-    //     RPS raster loaded into table rps_raster — neither exists in this environment yet.
+    //     RPS raster loaded into table rps_raster. Locally this data lives on a separate
+    //     PostGIS server (ConnectionStrings__RpsRaster in .env) rather than in the main
+    //     insuredge DB, so this queries that connection directly instead of _db.
     public async Task<decimal> GetRPSValueAsync(decimal lat, decimal lon, bool calculateRecurringRps)
     {
         if (lat == 0m || lon == 0m) return 0m;
+        if (string.IsNullOrWhiteSpace(_rpsRasterConnectionString)) return 0m;
 
         // SQL1 (non-recurring) and SQL2 (recurring) carry the same statement in the
         // original; the branch is preserved for fidelity and future divergence.
         _ = calculateRecurringRps;
-        var value = await _db.Database.SqlQuery<decimal?>($@"
-            SELECT ST_Value(
-                r.rast,
-                ST_Transform(ST_SetSRID(ST_MakePoint({lon},{lat}), 4326), 5070)
-            ) AS ""Value""
-            FROM rps_raster r
-            WHERE ST_Intersects(
-                r.rast,
-                ST_Transform(ST_SetSRID(ST_MakePoint({lon},{lat}), 4326), 5070)
-            )
-            LIMIT 1").FirstOrDefaultAsync();
-        return value ?? 0m;
+
+        // NOTE: exceptions here are deliberately NOT logged with their message/ToString() —
+        // an Npgsql connection failure can echo the connection string (incl. password) back
+        // in the exception text, and this connects to a credentialed remote host.
+        try
+        {
+            await using var conn = new NpgsqlConnection(_rpsRasterConnectionString);
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT ST_Value(
+                    r.rast,
+                    ST_Transform(ST_SetSRID(ST_MakePoint(@lon,@lat), 4326), 5070)
+                ) AS rps_value
+                FROM rps_raster r
+                WHERE ST_Intersects(
+                    r.rast,
+                    ST_Transform(ST_SetSRID(ST_MakePoint(@lon,@lat), 4326), 5070)
+                )
+                LIMIT 1", conn);
+            cmd.Parameters.AddWithValue("lon", (double)lon);
+            cmd.Parameters.AddWithValue("lat", (double)lat);
+
+            var result = await cmd.ExecuteScalarAsync();
+            if (result == null || result == DBNull.Value) return 0m;
+            return Convert.ToDecimal(result);
+        }
+        catch (Exception)
+        {
+            _log.LogWarning("RPS raster lookup failed (remote connection unavailable); falling back to 0.");
+            return 0m;
+        }
     }
 
     // GetOtherPerials (Service Action, captured flow):

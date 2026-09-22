@@ -127,17 +127,11 @@ builder.Services.AddHttpClient("plumsail", c => c.Timeout = TimeSpan.FromSeconds
 builder.Services.AddScoped<IPlumsailDocumentGenerator, InsureEdge.Infrastructure.Documents.PlumsailDocumentGenerator>();
 builder.Services.AddScoped<IDocumentGenerationService, InsureEdge.Infrastructure.Documents.DocumentGenerationService>();
 
-// TEMPORARILY DISABLED — InsureEdge.Infrastructure.Rating (RaterBootstrap, RaterFunctions,
-// Rater, HbisPlanComparisonChart) and HbisLimitsAndCoveragesService do not exist anywhere in
-// this branch's source or history — a pre-existing gap unrelated to Producer/Distribution
-// work, found while getting the solution building again. Re-enable alongside
-// RatingController's matching disabled endpoints once that subsystem is actually
-// ported/committed. See VERSIONS.md.
-// builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.RaterBootstrap>();
+builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.RaterBootstrap>();
 builder.Services.AddMemoryCache(); // aggregate-level "Cache in Minutes" support — still needed elsewhere
-// builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.RaterFunctions>();
-// builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.Rater>();
-// builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.HbisPlanComparisonChart>();
+builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.RaterFunctions>();
+builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.Rater>();
+builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.HbisPlanComparisonChart>();
 builder.Services.AddScoped<InsureEdge.Infrastructure.Services.HbisLimitsAndCoveragesService>();
 
 // --- Controllers ---
@@ -205,23 +199,21 @@ if (Directory.Exists(templateSrc))
         File.Copy(file, Path.Combine(templateDst, Path.GetFileName(file)), overwrite: true);
 }
 
-// TEMPORARILY DISABLED — see the matching disabled DI registrations above; RaterBootstrap
-// doesn't exist yet on this branch. Re-enable together.
-// using (var scope = app.Services.CreateScope())
-// {
-//     var raterBootstrap = scope.ServiceProvider.GetRequiredService<InsureEdge.Infrastructure.Rating.RaterBootstrap>();
-//     try
-//     {
-//         await raterBootstrap.BootstrapExcessFloodCoveragesAsync();
-//         await raterBootstrap.BootstrapHRHexzonesAsync();
-//         await raterBootstrap.BootstrapLRHexzonesAsync();
-//         await raterBootstrap.BootstrapStateTaxSheetAsync();
-//     }
-//     catch (Exception ex)
-//     {
-//         scope.ServiceProvider.GetRequiredService<ILogger<Program>>()
-//             .LogError(ex, "Rater bootstrap failed — HBRater tables may be unseeded");
-//     }
-// }
+using (var scope = app.Services.CreateScope())
+{
+    var raterBootstrap = scope.ServiceProvider.GetRequiredService<InsureEdge.Infrastructure.Rating.RaterBootstrap>();
+    try
+    {
+        await raterBootstrap.BootstrapExcessFloodCoveragesAsync();
+        await raterBootstrap.BootstrapHRHexzonesAsync();
+        await raterBootstrap.BootstrapLRHexzonesAsync();
+        await raterBootstrap.BootstrapStateTaxSheetAsync();
+    }
+    catch (Exception ex)
+    {
+        scope.ServiceProvider.GetRequiredService<ILogger<Program>>()
+            .LogError(ex, "Rater bootstrap failed — HBRater tables may be unseeded");
+    }
+}
 
 app.Run();
