@@ -2,6 +2,7 @@
 using InsureEdge.Application.DTOs.Distribution;
 using InsureEdge.Application.Interfaces;
 using InsureEdge.Application.Services;
+using InsureEdge.Application.Validation;
 using InsureEdge.Domain.Entities;
 using InsureEdge.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,13 @@ public class ProducerService(
         var intermediaryExists = await db.Intermediaries.AnyAsync(i => i.Id == intermediaryId.Value && i.ClientId == tenant.ClientId);
         if (!intermediaryExists)
             return (false, "Intermediary not found.", null);
+
+        var licenseError = ProducerLicenseValidator.Validate(
+            req.PcLicenseRequirement,
+            req.PlLicense,
+            req.ClLicense,
+            req.PlclCombinedLicense);
+        if (licenseError != null) return (false, licenseError, null);
 
         var producer = new Producer
         {
@@ -93,6 +101,13 @@ public class ProducerService(
     {
         var p = await db.Producers.FirstOrDefaultAsync(x => x.Id == id && x.ClientId == tenant.ClientId);
         if (p == null) return (false, "Producer not found.", null);
+
+        var licenseError = ProducerLicenseValidator.Validate(
+            req.PcLicenseRequirement,
+            req.PlLicense,
+            req.ClLicense,
+            req.PlclCombinedLicense);
+        if (licenseError != null) return (false, licenseError, null);
 
         if (req.Status != null) p.Status = req.Status;
         if (req.StatusToggle.HasValue) p.StatusToggle = req.StatusToggle;

@@ -1,7 +1,10 @@
 using System.Text.Json;
+using InsureEdge.API.Services;
+using Npgsql;
 using System.Text.Json.Serialization;
 using InsureEdge.API.Filters;
 using InsureEdge.Application.Interfaces;
+using InsureEdge.Application.Validation;
 using InsureEdge.Domain.Entities;
 using InsureEdge.Domain.Enums;
 using InsureEdge.Infrastructure.Data;
@@ -18,11 +21,13 @@ public class DistributionController : ControllerBase
 {
     private readonly InsureEdgeDbContext _db;
     private readonly ICurrentTenantService _tenant;
+    private readonly ProducerDraftIds _draftIds;
 
-    public DistributionController(InsureEdgeDbContext db, ICurrentTenantService tenant)
+    public DistributionController(InsureEdgeDbContext db, ICurrentTenantService tenant, ProducerDraftIds draftIds)
     {
         _db = db;
         _tenant = tenant;
+        _draftIds = draftIds;
     }
 
     [HttpGet("intermediaries")]
@@ -116,12 +121,42 @@ public class DistributionController : ControllerBase
         return producer == null ? NotFound() : Ok(ToProducerResponse(producer));
     }
 
+    [HttpPost("producers/reserve-id/{intermediaryId:long}")]
+    public async Task<IActionResult> ReserveProducerId(long intermediaryId)
+    {
+        if (!await _db.Intermediaries.AnyAsync(i => i.Id == intermediaryId && i.ClientId == _tenant.ClientId))
+            return NotFound();
+        try { return Ok(await _draftIds.ReserveAsync(_tenant.ClientId, _tenant.UserId, intermediaryId)); }
+        catch (InvalidOperationException error) { return Conflict(new { error = error.Message }); }
+    }
+
     [HttpPost("producers")]
     public async Task<IActionResult> CreateProducer([FromBody] UpsertProducerRequest request)
     {
         var clientId = _tenant.ClientId;
         var intermediaryExists = await _db.Intermediaries.AnyAsync(i => i.Id == request.IntermediaryId && i.ClientId == clientId);
         if (!intermediaryExists) return BadRequest(new { error = "Intermediary not found." });
+
+        var licenseError = ProducerLicenseValidator.Validate(
+            request.ResolvedPcLicenseRequirement(),
+            request.PlLicense,
+            request.ClLicense,
+            request.PlclCombinedLicense);
+        if (licenseError != null) return BadRequest(new { error = licenseError });
+
+        ReservedProducerId? reservation = null;
+        if (!string.IsNullOrEmpty(request.ProducerDraftToken))
+        {
+            if (!_draftIds.TryRead(request.ProducerDraftToken, clientId, _tenant.UserId, request.IntermediaryId, out reservation))
+                return BadRequest(new { error = "This producer ID reservation is invalid for the current user or intermediary." });
+            var existing = await FindProducer(reservation!.Id);
+            if (existing != null)
+            {
+                // A retry after a successful commit must not insert or overwrite a producer.
+                return existing.IntermediaryId == request.IntermediaryId && existing.ProducerCode == ProducerDraftIds.FormatCode(reservation.Id)
+                    ? Ok(ToProducerResponse(existing)) : Conflict(new { error = "The reserved producer ID is already in use." });
+            }
+        }
 
         var usedCodes = (await _db.Producers
             .Where(p => p.ClientId == clientId)
@@ -130,16 +165,25 @@ public class DistributionController : ControllerBase
 
         var producer = new Producer
         {
+            Id = reservation?.Id ?? 0,
             ClientId = clientId,
             IntermediaryId = request.IntermediaryId,
             CreatedBy = _tenant.UserId,
             CreatedOn = DateTime.UtcNow,
-            ProducerCode = NextCode("PR", usedCodes),
+            ProducerCode = reservation is null ? NextCode("PR", usedCodes) : ProducerDraftIds.FormatCode(reservation.Id),
         };
 
         ApplyProducer(producer, request);
         _db.Producers.Add(producer);
-        await _db.SaveChangesAsync();
+        try { await _db.SaveChangesAsync(); }
+        catch (DbUpdateException error) when (reservation != null && error.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            _db.Entry(producer).State = EntityState.Detached;
+            var existing = await FindProducer(reservation.Id);
+            if (existing != null && existing.IntermediaryId == request.IntermediaryId && existing.ProducerCode == producer.ProducerCode)
+                return Ok(ToProducerResponse(existing));
+            return Conflict(new { error = "The reserved producer ID is already in use." });
+        }
 
         return Ok(ToProducerResponse(producer));
     }
@@ -153,6 +197,13 @@ public class DistributionController : ControllerBase
         var clientId = _tenant.ClientId;
         var intermediaryExists = await _db.Intermediaries.AnyAsync(i => i.Id == request.IntermediaryId && i.ClientId == clientId);
         if (!intermediaryExists) return BadRequest(new { error = "Intermediary not found." });
+
+        var licenseError = ProducerLicenseValidator.Validate(
+            request.ResolvedPcLicenseRequirement(),
+            request.PlLicense,
+            request.ClLicense,
+            request.PlclCombinedLicense);
+        if (licenseError != null) return BadRequest(new { error = licenseError });
 
         producer.IntermediaryId = request.IntermediaryId;
         producer.UpdatedBy = _tenant.UserId;
@@ -253,7 +304,7 @@ public class DistributionController : ControllerBase
         producer.FirstName = Required(request.FirstName, "Unknown", 50);
         producer.MiddleName = TrimTo(request.MiddleName, 50);
         producer.LastName = Required(request.LastName, "Unknown", 50);
-        producer.PcLicenseRequirement = TrimTo(request.PcLicenseRequirement ?? request.ExtraString("pc_license_requirement") ?? request.ExtraString("pcLicenseRequirement"), 10);
+        producer.PcLicenseRequirement = TrimTo(request.ResolvedPcLicenseRequirement(), 10);
         producer.Country = TrimTo(request.Country, 50);
         producer.ResidentialState = TrimTo(request.ResidentialState, 50);
         producer.PlLicense = TrimTo(request.PlLicense, 10);
@@ -264,6 +315,8 @@ public class DistributionController : ControllerBase
         producer.AltTelephoneNumberCC = TrimTo(request.AltTelephoneNumberCc, 10);
         producer.AltTelephoneNumber = TrimTo(request.AltTelephoneNumber, 20);
         producer.Email = TrimTo(request.Email, 50);
+        producer.IsManager = request.IsManager;
+        producer.ManagerId = request.ManagerId;
         producer.Extension = request.Extension;
         producer.Suffix = TrimTo(request.Suffix, 4);
         producer.Gender = TrimTo(request.Gender, 50);
@@ -314,6 +367,8 @@ public class DistributionController : ControllerBase
         alt_telephone_number_cc = p.AltTelephoneNumberCC,
         alt_telephone_number = p.AltTelephoneNumber,
         email = p.Email,
+        is_manager = p.IsManager,
+        manager_id = p.ManagerId,
         extension = p.Extension,
         suffix = p.Suffix,
         gender = p.Gender,
@@ -362,6 +417,7 @@ public sealed class UpsertIntermediaryRequest
 
 public sealed class UpsertProducerRequest
 {
+    [JsonPropertyName("producer_draft_token")] public string? ProducerDraftToken { get; init; }
     [JsonPropertyName("intermediary_id")] public long IntermediaryId { get; init; }
     [JsonPropertyName("status")] public string? Status { get; init; }
     [JsonPropertyName("status_toggle")] public bool? StatusToggle { get; init; }
@@ -379,6 +435,8 @@ public sealed class UpsertProducerRequest
     [JsonPropertyName("alt_telephone_number_cc")] public string? AltTelephoneNumberCc { get; init; }
     [JsonPropertyName("alt_telephone_number")] public string? AltTelephoneNumber { get; init; }
     [JsonPropertyName("email")] public string? Email { get; init; }
+    [JsonPropertyName("is_manager")] public bool? IsManager { get; init; }
+    [JsonPropertyName("manager_id")] public long? ManagerId { get; init; }
     [JsonPropertyName("extension")] public int? Extension { get; init; }
     [JsonPropertyName("suffix")] public string? Suffix { get; init; }
     [JsonPropertyName("gender")] public string? Gender { get; init; }
@@ -391,4 +449,7 @@ public sealed class UpsertProducerRequest
             ? value.GetString()
             : null;
     }
+
+    public string? ResolvedPcLicenseRequirement() =>
+        PcLicenseRequirement ?? ExtraString("pc_license_requirement") ?? ExtraString("pcLicenseRequirement");
 }

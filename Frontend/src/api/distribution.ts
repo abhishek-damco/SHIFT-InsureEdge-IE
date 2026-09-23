@@ -41,6 +41,7 @@ export const distributionApi = {
   },
 
   producers: {
+    reserveId: (iid: number) => apiClient.post<{ producer_code: string; producer_draft_token: string }>(`/distribution/producers/reserve-id/${iid}`).then(r => r.data),
     listByIntermediary: (iid: number)  => apiClient.get<any[]>(`/distribution/producers/by-intermediary/${iid}`).then(r => r.data),
     get:    (id: number)               => apiClient.get<any>(`/distribution/producers/${id}`).then(r => r.data),
     create: (data: any)                => apiClient.post<any>('/distribution/producers', data).then(r => r.data),

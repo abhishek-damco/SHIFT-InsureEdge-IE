@@ -129,11 +129,15 @@ export default function ReviewSubmitPage({
           const producers: any[] = Array.isArray(step4) ? step4 : (step4?.producers ?? []);
           for (const prod of producers) {
             const pf = prod.form ?? prod;
+            const licenseRequirement = pf.licReq || pf.pcLicenseRequirement || 'Combined';
             await api.producers.create({
               intermediary_id: iid, status: 'Active', status_toggle: true,
               first_name: pf.firstName || 'Unknown', last_name: pf.lastName || 'Unknown',
               residential_state: pf.residentState || null,
-              pc_licence_requirement: pf.pcLicenseRequirement || 'Combined',
+              pc_licence_requirement: licenseRequirement,
+              pl_license: licenseRequirement === 'Separate' ? (pf.plLicense || null) : null,
+              cl_license: licenseRequirement === 'Separate' ? (pf.clLicense || null) : null,
+              plcl_combined_license: licenseRequirement === 'Combined' ? (pf.combinedLicense || null) : null,
               telephone_number_cc: pf.phoneCC || '1', telephone_number: pf.phone || '0000000000',
               email: pf.email || null, country: pf.country || 'United States',
             }).catch(() => {});
