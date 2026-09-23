@@ -410,6 +410,16 @@ const RICH_TEXT_COMMANDS: { label: string; command: string; value?: string }[] =
 function RichTextEditor({ value, onChange }: { value: string; onChange: (html: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
 
+  // Set the DOM content once on mount only — NOT on every render via dangerouslySetInnerHTML.
+  // onInput below reports changes back to the parent's `value` state, which would otherwise
+  // re-render this component with that same `value` and reassign innerHTML on every keystroke,
+  // resetting the cursor to position 0 and making each new character get inserted at the start
+  // (visibly reversing whatever's typed).
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = value;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const exec = (command: string, cmdValue?: string) => {
     ref.current?.focus();
     document.execCommand(command, false, cmdValue);
@@ -443,7 +453,6 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (html: s
         contentEditable
         suppressContentEditableWarning
         onInput={e => onChange((e.target as HTMLDivElement).innerHTML)}
-        dangerouslySetInnerHTML={{ __html: value }}
         style={{ minHeight: 120, padding: '10px 12px', fontSize: 13, outline: 'none', background: '#fff' }}
       />
     </div>
@@ -1183,9 +1192,17 @@ function PlaceholderContent({ title }: { title: string }) {
 
 const na = (value: string | null | undefined) => value ?? '-';
 
-function PolicyInformationCard({ summary }: { summary: PolicySummaryDto | null }) {
+function PolicyInformationCard({ summary, policyId }: { summary: PolicySummaryDto | null; policyId: string }) {
+  const navigate = useNavigate();
   return (
-    <Section title="Policy Information" actions={<button style={{ height: 34, minWidth: 110, border: '1px solid #0B5AA0', background: '#fff', color: '#0B5AA0', borderRadius: 4, fontWeight: 700, cursor: 'pointer' }}>View Policy</button>}>
+    <Section title="Policy Information" actions={
+      <button
+        onClick={() => navigate(`/quotes-policies/submissions/${policyId}?readOnly=1`)}
+        style={{ height: 34, minWidth: 110, border: '1px solid #0B5AA0', background: '#fff', color: '#0B5AA0', borderRadius: 4, fontWeight: 700, cursor: 'pointer' }}
+      >
+        View Policy
+      </button>
+    }>
       <ReadGrid items={[
         { label: 'Line of Business', value: na(summary?.lob) },
         { label: 'Sub-Product', value: na(summary?.subProduct) },
@@ -1215,7 +1232,7 @@ function contactCell(row: PolicyContactDto, key: ContactColKey): string {
   return row.address ?? '';
 }
 
-function ContactsContent({ summary }: { summary: PolicySummaryDto | null }) {
+function ContactsContent({ summary, policyId }: { summary: PolicySummaryDto | null; policyId: string }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortState | null>(null);
@@ -1268,7 +1285,7 @@ function ContactsContent({ summary }: { summary: PolicySummaryDto | null }) {
 
   return (
     <>
-      <PolicyInformationCard summary={summary} />
+      <PolicyInformationCard summary={summary} policyId={policyId} />
 
       <Section title="Contacts">
         <div style={{ marginBottom: 14 }}>
@@ -1411,7 +1428,7 @@ function PendingTransactionsContent({ policyId, insuredType, summary }: { policy
 
   return (
     <>
-      <PolicyInformationCard summary={summary} />
+      <PolicyInformationCard summary={summary} policyId={policyId} />
 
       <Section title="Pending Transactions">
         <div style={{ marginBottom: 14 }}>
@@ -1670,7 +1687,7 @@ function PolicyHistoryContent({ policyId, insuredType, summary }: { policyId: st
 
   return (
     <>
-      <PolicyInformationCard summary={summary} />
+      <PolicyInformationCard summary={summary} policyId={policyId} />
 
       <Section title="Policy History">
         <div style={{ marginBottom: 14 }}>
@@ -1817,7 +1834,7 @@ function ClaimsContent({ policyId, insuredType, summary }: { policyId: string; i
 
   return (
     <>
-      <PolicyInformationCard summary={summary} />
+      <PolicyInformationCard summary={summary} policyId={policyId} />
 
       <Section title="Claims">
         <div style={{ marginBottom: 14 }}>
@@ -2146,7 +2163,7 @@ function NotesSection({ policyId, insuredType }: { policyId: string; insuredType
 function NotesContent({ policyId, insuredType, summary }: { policyId: string; insuredType: string; summary: PolicySummaryDto | null }) {
   return (
     <>
-      <PolicyInformationCard summary={summary} />
+      <PolicyInformationCard summary={summary} policyId={policyId} />
       <NotesSection policyId={policyId} insuredType={insuredType} />
     </>
   );
@@ -2174,7 +2191,7 @@ function TimelineContent({ policyId, insuredType, summary }: { policyId: string;
 
   return (
     <>
-      <PolicyInformationCard summary={summary} />
+      <PolicyInformationCard summary={summary} policyId={policyId} />
 
       <Section title={`Total Transactions – ${entries.length}`}>
         {groups.length === 0 ? <EmptyState /> : (
@@ -2238,7 +2255,7 @@ function SummaryContent({ policyId, insuredType, summary }: { policyId: string; 
 
   return (
     <>
-      <PolicyInformationCard summary={summary} />
+      <PolicyInformationCard summary={summary} policyId={policyId} />
 
       <Section title="Producer Information">
         {summary && summary.producers.length > 0 ? (
@@ -2485,7 +2502,7 @@ export default function PolicySummaryPage() {
             />
           ) : <>
           {active === 'summary' && <SummaryContent policyId={policyId} insuredType={insuredType} summary={summary} />}
-          {active === 'contacts' && <ContactsContent summary={summary} />}
+          {active === 'contacts' && <ContactsContent summary={summary} policyId={policyId} />}
           {active === 'billing' && <BillingContent policyId={policyId} insuredType={insuredType} summary={summary} />}
           {active === 'pending' && <PendingTransactionsContent policyId={policyId} insuredType={insuredType} summary={summary} />}
           {active === 'history' && <PolicyHistoryContent policyId={policyId} insuredType={insuredType} summary={summary} />}
