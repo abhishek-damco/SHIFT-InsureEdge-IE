@@ -31,14 +31,16 @@ public class DocumentGenerationService : IDocumentGenerationService
     private readonly InsureEdgeDbContext _db;
     private readonly IPlumsailDocumentGenerator _plumsail;
     private readonly ICurrentTenantService _tenant;
+    private readonly IBlobStorageService _blob;
     private readonly ILogger<DocumentGenerationService> _log;
 
     public DocumentGenerationService(InsureEdgeDbContext db, IPlumsailDocumentGenerator plumsail,
-        ICurrentTenantService tenant, ILogger<DocumentGenerationService> log)
+        ICurrentTenantService tenant, IBlobStorageService blob, ILogger<DocumentGenerationService> log)
     {
         _db = db;
         _plumsail = plumsail;
         _tenant = tenant;
+        _blob = blob;
         _log = log;
     }
 
@@ -217,11 +219,21 @@ public class DocumentGenerationService : IDocumentGenerationService
             PolicyId = policy.Id,
             FileName = PackageFileName,
             FileType = "pdf",
-            BinaryFileTemp = merged,
             TransactionType = null,
             Version = null,
             CreatedBy = _tenant.UserId,
         };
+        try
+        {
+            document.BlobPath = await _blob.UploadPolicyDocumentAsync(
+                policy.ClientId.ToString(), policy.Id.ToString(), "QuoteProposalPackage",
+                PackageFileName, new MemoryStream(merged), "application/pdf");
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "DocumentGeneration: Failed to upload PolicyDocument to blob storage");
+            return new GenerateDocumentResult(false, "Failed to store generated document.", null, null, PackageFileName);
+        }
         _db.PolicyDocuments.Add(document);
         try
         {
@@ -245,7 +257,8 @@ public class DocumentGenerationService : IDocumentGenerationService
         if (policy == null) return Array.Empty<GeneratedDocumentDto>();
 
         return await _db.PolicyDocuments
-            .Where(d => d.PolicyId == policy.Id && d.ClientId == clientId && d.BinaryFileTemp != null)
+            .Where(d => d.PolicyId == policy.Id && d.ClientId == clientId && d.TransactionType != ClientUploadTransactionType
+                && (d.BlobPath != null || d.BinaryFileTemp != null))
             .OrderByDescending(d => d.CreatedOn)
             .Select(d => new GeneratedDocumentDto(d.Id, d.FileName, d.FileType, d.TransactionType, d.Version, d.CreatedOn))
             .ToListAsync();
@@ -261,9 +274,86 @@ public class DocumentGenerationService : IDocumentGenerationService
         // Tenant isolation on download (PRD §17): document must belong to this client+policy.
         var doc = await _db.PolicyDocuments.FirstOrDefaultAsync(d =>
             d.Id == documentId && d.PolicyId == policy.Id && d.ClientId == clientId);
-        if (doc?.BinaryFileTemp == null) return null;
+        if (doc == null) return null;
         var contentType = string.Equals(doc.FileType, "pdf", StringComparison.OrdinalIgnoreCase)
             ? "application/pdf" : "application/octet-stream";
+
+        if (!string.IsNullOrEmpty(doc.BlobPath))
+        {
+            var blobResult = await _blob.DownloadAsync(doc.BlobPath);
+            if (blobResult == null) return null;
+            using var ms = new MemoryStream();
+            await blobResult.Value.Content.CopyToAsync(ms);
+            return (ms.ToArray(), doc.FileName ?? "document", blobResult.Value.ContentType ?? contentType);
+        }
+
+        if (doc.BinaryFileTemp == null) return null;
+        return (doc.BinaryFileTemp, doc.FileName ?? "document", contentType);
+    }
+
+    private const string ClientUploadTransactionType = "ClientUpload";
+
+    // ─── Client Documents tab (user uploads, distinct from generated documents) ───
+
+    public async Task<ClientDocumentDto> UploadClientDocumentAsync(string submissionId, string fileName, string? documentType, Stream content, string? contentType)
+    {
+        var clientId = _tenant.ClientId;
+        var policy = await _db.Policies.FirstOrDefaultAsync(p =>
+            p.ClientId == clientId && (p.QuoteNumber == submissionId || p.PolicyNumber == submissionId));
+        if (policy == null)
+            throw new KeyNotFoundException("Quote not found.");
+
+        var document = new PolicyDocument
+        {
+            ClientId = clientId,
+            PolicyId = policy.Id,
+            FileName = fileName,
+            FileType = Path.GetExtension(fileName).TrimStart('.'),
+            TransactionType = ClientUploadTransactionType,
+            CreatedBy = _tenant.UserId,
+        };
+        document.BlobPath = await _blob.UploadPolicyDocumentAsync(
+            clientId.ToString(), policy.Id.ToString(), string.IsNullOrWhiteSpace(documentType) ? ClientUploadTransactionType : documentType,
+            fileName, content, contentType);
+
+        _db.PolicyDocuments.Add(document);
+        await _db.SaveChangesAsync();
+
+        return new ClientDocumentDto(document.Id, fileName, document.CreatedOn);
+    }
+
+    public async Task<IReadOnlyList<ClientDocumentDto>> ListClientDocumentsAsync(string submissionId)
+    {
+        var clientId = _tenant.ClientId;
+        var policy = await _db.Policies.FirstOrDefaultAsync(p =>
+            p.ClientId == clientId && (p.QuoteNumber == submissionId || p.PolicyNumber == submissionId));
+        if (policy == null) return Array.Empty<ClientDocumentDto>();
+
+        return await _db.PolicyDocuments
+            .Where(d => d.PolicyId == policy.Id && d.ClientId == clientId && d.TransactionType == ClientUploadTransactionType)
+            .OrderByDescending(d => d.CreatedOn)
+            .Select(d => new ClientDocumentDto(d.Id, d.FileName ?? "document", d.CreatedOn))
+            .ToListAsync();
+    }
+
+    public async Task<(byte[] Bytes, string FileName, string ContentType)?> GetDocumentBinaryByIdAsync(long documentId)
+    {
+        var clientId = _tenant.ClientId;
+        var doc = await _db.PolicyDocuments.FirstOrDefaultAsync(d => d.Id == documentId && d.ClientId == clientId);
+        if (doc == null) return null;
+        var contentType = string.Equals(doc.FileType, "pdf", StringComparison.OrdinalIgnoreCase)
+            ? "application/pdf" : "application/octet-stream";
+
+        if (!string.IsNullOrEmpty(doc.BlobPath))
+        {
+            var blobResult = await _blob.DownloadAsync(doc.BlobPath);
+            if (blobResult == null) return null;
+            using var ms = new MemoryStream();
+            await blobResult.Value.Content.CopyToAsync(ms);
+            return (ms.ToArray(), doc.FileName ?? "document", blobResult.Value.ContentType ?? contentType);
+        }
+
+        if (doc.BinaryFileTemp == null) return null;
         return (doc.BinaryFileTemp, doc.FileName ?? "document", contentType);
     }
 
@@ -340,11 +430,21 @@ public class DocumentGenerationService : IDocumentGenerationService
                 PolicyId = policy.Id,
                 FileName = NoticeOfNonRenewalFileName,
                 FileType = "pdf",
-                BinaryFileTemp = pdf,
                 TransactionType = "Do Not Renew",
                 Version = version,
                 CreatedBy = _tenant.UserId,
             };
+            try
+            {
+                document.BlobPath = await _blob.UploadPolicyDocumentAsync(
+                    clientId.ToString(), policy.Id.ToString(), "DoNotRenew",
+                    NoticeOfNonRenewalFileName, new MemoryStream(pdf), "application/pdf");
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "DocumentGeneration: Failed to upload Notice of Nonrenewal to blob storage");
+                return new GenerateDocumentResult(false, "Failed to store generated document.", null, null, NoticeOfNonRenewalFileName);
+            }
             _db.PolicyDocuments.Add(document);
             await _db.SaveChangesAsync();
 

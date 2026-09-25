@@ -4843,7 +4843,7 @@ function StepDocuments({ form, flow, submissionId }: { form: FormState; flow: Fl
       fd.append('file', uploadFile);
       fd.append('document_name', documentName);
       fd.append('document_type', uploadDocumentType.trim());
-      api.post(`/submissions/${submissionId}/documents`, fd).then(r => r.data).catch(() => null)
+      api.post(`/submissions/${submissionId}/documents`, fd, { headers: { 'Content-Type': undefined } }).then(r => r.data).catch(() => null)
         .then(doc => {
           const localId = doc ? `backend-${doc.id}` : `uploaded-${Date.now()}`;
           setUploadedDocs(current => [...current, {

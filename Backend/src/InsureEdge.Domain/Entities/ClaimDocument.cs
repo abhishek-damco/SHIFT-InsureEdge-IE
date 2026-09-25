@@ -12,7 +12,8 @@ public class ClaimDocument
     public string FileName { get; set; } = string.Empty;
     public string? ContentType { get; set; }
     public long? FileSize { get; set; }
-    public byte[]? DocumentFile { get; set; }   // not mapped in list queries
+    public string? BlobPath { get; set; }
+    public byte[]? DocumentFile { get; set; }   // not mapped in list queries; legacy rows only, new uploads go to blob storage
     public long? NotifyTo { get; set; }
     public string? Comment { get; set; }
     public long? CreatedBy { get; set; }

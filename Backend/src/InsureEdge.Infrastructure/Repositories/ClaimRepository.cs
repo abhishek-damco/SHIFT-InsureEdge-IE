@@ -26,11 +26,13 @@ public class ClaimRepository : IClaimRepository
 {
     private readonly InsureEdgeDbContext _db;
     private readonly ProducerScope? _producerScope;
+    private readonly IBlobStorageService _blob;
 
-    public ClaimRepository(InsureEdgeDbContext db, ICurrentTenantService tenant)
+    public ClaimRepository(InsureEdgeDbContext db, ICurrentTenantService tenant, IBlobStorageService blob)
     {
         _db = db;
         _producerScope = ProducerScope.FromTenant(tenant);
+        _blob = blob;
     }
 
     // Staff retain client-wide access. Producer self-service sessions are restricted to
@@ -782,7 +784,8 @@ public class ClaimRepository : IClaimRepository
 
     public async Task<ClaimDocumentDto> AddDocumentAsync(long claimId, CreateClaimDocumentRequest req, long clientId, long userId)
     {
-        await EnsureClaimAsync(claimId, clientId);
+        var claimForDoc = await _db.Claims.FirstOrDefaultAsync(c => c.Id == claimId && c.ClientId == clientId)
+            ?? throw new KeyNotFoundException($"Claim {claimId} not found.");
         if (string.IsNullOrWhiteSpace(req.FileName))
             throw new ArgumentException("Document file name is required.");
         var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -816,8 +819,10 @@ public class ClaimRepository : IClaimRepository
             Comment = req.Comment,
             CreatedBy = userId,
             CreatedOn = DateTime.UtcNow,
-            DocumentFile = content
         };
+        doc.BlobPath = await _blob.UploadClaimDocumentAsync(
+            clientId.ToString(), claimForDoc.PolicyId.ToString(), "ClaimAttachment",
+            req.FileName, new MemoryStream(content), req.ContentType);
         _db.ClaimDocuments.Add(doc);
         await _db.SaveChangesAsync();
         return (await MapDocumentsAsync(new List<ClaimDocument> { doc })).Single();
@@ -828,7 +833,18 @@ public class ClaimRepository : IClaimRepository
         await EnsureClaimAsync(claimId, clientId);
         var doc = await _db.ClaimDocuments
             .FirstOrDefaultAsync(d => d.Id == documentId && d.ClaimId == claimId && d.ClientId == clientId);
-        return doc == null ? null : new ClaimDocumentFileDto(doc.Id, doc.FileName, doc.ContentType, doc.DocumentFile);
+        if (doc == null) return null;
+
+        if (!string.IsNullOrEmpty(doc.BlobPath))
+        {
+            var blobResult = await _blob.DownloadAsync(doc.BlobPath);
+            if (blobResult == null) return null;
+            using var ms = new MemoryStream();
+            await blobResult.Value.Content.CopyToAsync(ms);
+            return new ClaimDocumentFileDto(doc.Id, doc.FileName, doc.ContentType ?? blobResult.Value.ContentType, ms.ToArray());
+        }
+
+        return new ClaimDocumentFileDto(doc.Id, doc.FileName, doc.ContentType, doc.DocumentFile);
     }
 
     public async Task DeleteDocumentAsync(long claimId, long documentId, long clientId)
@@ -836,6 +852,8 @@ public class ClaimRepository : IClaimRepository
         await EnsureClaimAsync(claimId, clientId);
         var doc = await _db.ClaimDocuments.FirstOrDefaultAsync(d => d.Id == documentId && d.ClaimId == claimId && d.ClientId == clientId)
             ?? throw new KeyNotFoundException($"Document {documentId} not found.");
+        if (!string.IsNullOrEmpty(doc.BlobPath))
+            await _blob.DeleteAsync(doc.BlobPath);
         _db.ClaimDocuments.Remove(doc);
         await _db.SaveChangesAsync();
     }

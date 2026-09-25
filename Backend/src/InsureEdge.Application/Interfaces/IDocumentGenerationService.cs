@@ -14,6 +14,9 @@ public record GeneratedDocumentDto(
 
 public record GenerateDocumentResult(bool Success, string Message, long? DocumentId, byte[]? Pdf, string FileName);
 
+// Client Documents tab: user-uploaded attachments on the submission (not system-generated).
+public record ClientDocumentDto(long Id, string DocumentName, DateTime UploadedOn);
+
 // The 65 "Our Policy Nonrenewal" checkbox selections + the 1 "Your Nonrenewal" selection —
 // these are never persisted (confirmed against the source OutSystems action: they exist only
 // transiently to render the notice document), so they're passed straight through here.
@@ -38,4 +41,15 @@ public interface IDocumentGenerationService
 
     // Per-row Download/Preview: stream a previously generated document's stored binary.
     Task<(byte[] Bytes, string FileName, string ContentType)?> GetGeneratedBinaryAsync(string submissionId, long documentId);
+
+    // Client Documents tab: user-uploaded attachment, persisted to blob storage as a
+    // PolicyDocument (TransactionType="ClientUpload").
+    Task<ClientDocumentDto> UploadClientDocumentAsync(string submissionId, string fileName, string? documentType, Stream content, string? contentType);
+
+    // Client Documents grid rows for the submission's policy.
+    Task<IReadOnlyList<ClientDocumentDto>> ListClientDocumentsAsync(string submissionId);
+
+    // Per-row Download/Preview: stream a document's stored binary by id alone (tenant-scoped),
+    // for the standalone /api/documents/{id}/view|download routes.
+    Task<(byte[] Bytes, string FileName, string ContentType)?> GetDocumentBinaryByIdAsync(long documentId);
 }

@@ -44,7 +44,7 @@ public class ClaimRegistrationIntegrationTests
         var consequence = await db.ConsequencesOfLoss.AsNoTracking().Select(c => c.Name).FirstAsync();
 
         var tenant = new TestTenant(policy.ClientId, userId, policy.ProducerId, policy.IntermediaryId);
-        var repository = new ClaimRepository(db, tenant);
+        var repository = new ClaimRepository(db, tenant, new NullBlobStorageService());
 
         try
         {
@@ -94,7 +94,7 @@ public class ClaimRegistrationIntegrationTests
             if (otherProducerId.HasValue)
             {
                 var otherTenant = new TestTenant(policy.ClientId, userId, otherProducerId.Value, policy.IntermediaryId);
-                var otherRepository = new ClaimRepository(db, otherTenant);
+                var otherRepository = new ClaimRepository(db, otherTenant, new NullBlobStorageService());
                 (await otherRepository.GetClaimByIdAsync(draftId, policy.ClientId)).Should().BeNull();
             }
         }
@@ -173,5 +173,23 @@ public class ClaimRegistrationIntegrationTests
         public long? ProducerId => ProducerIdValue;
         public long? IntermediaryId => IntermediaryIdValue;
         public bool IsFullProducerVisibility => false;
+    }
+
+    private sealed class NullBlobStorageService : IBlobStorageService
+    {
+        public Task<string> UploadPolicyDocumentAsync(
+            string clientId, string policyId, string documentType, string fileName,
+            Stream content, string? contentType, CancellationToken ct = default) =>
+            Task.FromResult($"test/{clientId}/{policyId}/{fileName}");
+
+        public Task<string> UploadClaimDocumentAsync(
+            string clientId, string policyId, string documentType, string fileName,
+            Stream content, string? contentType, CancellationToken ct = default) =>
+            Task.FromResult($"test/{clientId}/Claims/{fileName}");
+
+        public Task<(Stream Content, string? ContentType)?> DownloadAsync(string blobPath, CancellationToken ct = default) =>
+            Task.FromResult<(Stream Content, string? ContentType)?>(null);
+
+        public Task DeleteAsync(string blobPath, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

@@ -127,6 +127,7 @@ builder.Services.AddSingleton<IEmailService, SmtpEmailService>(); // stateless S
 builder.Services.AddHttpClient("plumsail", c => c.Timeout = TimeSpan.FromSeconds(60));
 builder.Services.AddScoped<IPlumsailDocumentGenerator, InsureEdge.Infrastructure.Documents.PlumsailDocumentGenerator>();
 builder.Services.AddScoped<IDocumentGenerationService, InsureEdge.Infrastructure.Documents.DocumentGenerationService>();
+builder.Services.AddScoped<IBlobStorageService, InsureEdge.Infrastructure.Documents.AzureBlobStorageService>();
 
 builder.Services.AddScoped<InsureEdge.Infrastructure.Rating.RaterBootstrap>();
 builder.Services.AddMemoryCache(); // aggregate-level "Cache in Minutes" support — still needed elsewhere

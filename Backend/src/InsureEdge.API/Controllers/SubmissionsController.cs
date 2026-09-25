@@ -228,6 +228,33 @@ public class SubmissionsController : ControllerBase
         return File(file.Value.Bytes, file.Value.ContentType, file.Value.FileName);
     }
 
+    // ─── Client Documents tab (user uploads) ───────────────────────────────────
+
+    [HttpGet("{id}/documents")]
+    public async Task<IActionResult> ListClientDocuments(string id,
+        [FromServices] InsureEdge.Application.Interfaces.IDocumentGenerationService docs)
+        => Ok(await docs.ListClientDocumentsAsync(id));
+
+    [HttpPost("{id}/documents")]
+    [RequestSizeLimit(25 * 1024 * 1024)]
+    public async Task<IActionResult> UploadClientDocument(string id, IFormFile file, [FromForm] string? document_name, [FromForm] string? document_type,
+        [FromServices] InsureEdge.Application.Interfaces.IDocumentGenerationService docs)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { error = "File is required." });
+        try
+        {
+            var fileName = string.IsNullOrWhiteSpace(document_name) ? file.FileName : document_name;
+            await using var stream = file.OpenReadStream();
+            var result = await docs.UploadClientDocumentAsync(id, fileName, document_type, stream, file.ContentType);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
     // ─── Share Quote (Finalize Quote → Document → Share Quote) ────────────────
 
     [HttpPost("{id}/share-quote")]
