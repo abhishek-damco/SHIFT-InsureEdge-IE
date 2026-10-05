@@ -21,9 +21,11 @@
 // OutSystems empty-aggregate semantics: List.Current of an empty result is a default
 // record ("" / 0 / NullIdentifier()), so a policy with no policy_limit_coverage row
 // still yields the defaults — modelled here by treating a missing row as empty values.
-// Note: the original entity carried *_EX text duplicates of several columns; our db/010
-// migration collapsed them into single canonical columns, so the _EX default and the raw
-// value read from the same column here.
+// UPDATE (db/044): the _EX columns are back — this screen is read-only and should show the
+// true rating-engine/Excel-computed value (_EX) once one has been captured, not whatever
+// the plain/canonical column currently holds (which may have since been edited elsewhere,
+// e.g. "Plans Overview"). Falls back to the plain column, then to the hardcoded literal
+// default, for legacy rows created before _EX capture existed.
 using InsureEdge.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -70,47 +72,48 @@ public class HbisLimitsAndCoveragesService
             policyId = policy.Id,
             id = plc?.Id ?? 0,
 
-            // Defaults-applied (_EX) selections
-            coverageLevel = Def(plc?.CoverageLevel, "Basic"),
-            liabilityCoverage = Def(plc?.LiabilityCoverage, "100000"),
-            excessBlanketPL = Def(plc?.ExcessBlanketPl, "No Coverage"),
-            sinkholeCatastrophicGroundCollapse = Def(plc?.SinkholeCatastrophicGroundCollapse, "No"),
-            earthquake = Def(plc?.Earthquake, "None"),
-            flood = Def(plc?.Flood, "None"),
-            windHail = Def(plc?.WindHail, "Included"),
-            wildFire = Def(plc?.WildFire, "Included"),         // ASSUMPTION A5 (see header)
-            residentWorkerNFM = Def(plc?.ResidentWorkerNfm, "No"),
-            smallScaleFarmingEndorsement = Def(plc?.SmallScaleFarmingEndorsement, "No"),
-            landlordEndorsement = Def(plc?.LandlordEndorsement, "No"),
-            homeOfficeEndorsement = Def(plc?.HomeOfficeEndorsement, "No"),
+            // Defaults-applied (_EX) selections — prefer the real captured _EX value, fall
+            // back to the plain column (legacy rows), then to the hardcoded literal default.
+            coverageLevel = Def(plc?.CoverageLevelEx ?? plc?.CoverageLevel, "Basic"),
+            liabilityCoverage = Def(plc?.LiabilityCoverageEx ?? plc?.LiabilityCoverage, "100000"),
+            excessBlanketPL = Def(plc?.ExcessBlanketPlEx ?? plc?.ExcessBlanketPl, "No Coverage"),
+            sinkholeCatastrophicGroundCollapse = Def(plc?.SinkholeCatastrophicGroundCollapseEx ?? plc?.SinkholeCatastrophicGroundCollapse, "No"),
+            earthquake = Def(plc?.EarthquakeEx ?? plc?.Earthquake, "None"),
+            flood = Def(plc?.FloodEx ?? plc?.Flood, "None"),
+            windHail = Def(plc?.WindHailEx ?? plc?.WindHail, "Included"),
+            wildFire = Def(plc?.WildFireEx ?? plc?.WildFire, "Included"),  // ASSUMPTION A5 (see header)
+            residentWorkerNFM = Def(plc?.ResidentWorkerNfmEx ?? plc?.ResidentWorkerNfm, "No"),
+            smallScaleFarmingEndorsement = Def(plc?.SmallScaleFarmingEndorsementEx ?? plc?.SmallScaleFarmingEndorsement, "No"),
+            landlordEndorsement = Def(plc?.LandlordEndorsementEx ?? plc?.LandlordEndorsement, "No"),
+            homeOfficeEndorsement = Def(plc?.HomeOfficeEndorsementEx ?? plc?.HomeOfficeEndorsement, "No"),
             priorPolicyPeriodPremium,
 
-            // Straight-through limits/premiums (no defaults in the captured assign)
+            // Straight-through limits/premiums (no _EX pairing — never had one, see entity header)
             dwellingLimit = plc?.DwellingAssetLimit,
             appurtenantStructureAssetsLimit = plc?.AppurtenantStructureAsset,
             personalAssetsLimit = plc?.PersonalBelongingsAsset,
             dwellingOccupancyDisruptionLimit = plc?.DwellingOccupancy,
             totalInsuredValue = plc?.Tiv,
             basicCoveragelevelCalculationPremium = plc?.CalculatedPremium,
-            rateModification = plc?.RateModification,
-            physicalDamageDeductible = plc?.PhysicalDamageDeductible,
-            coveredLiabilitySelfInsuredRetention = plc?.CoveredLiabilitySir,
-            basePremium = plc?.BasePremium,
+            rateModification = plc?.RateModificationEx ?? plc?.RateModification,
+            physicalDamageDeductible = plc?.PhysicalDamageDeductibleEx ?? plc?.PhysicalDamageDeductible,
+            coveredLiabilitySelfInsuredRetention = plc?.CoveredLiabilitySirEx ?? plc?.CoveredLiabilitySir,
+            basePremium = plc?.BasePremiumEx ?? plc?.BasePremium,
             totalPremiumAmount = plc?.TotalPremiumWithFee,     // captured: TotalPremiumAmount = TotalPremiumWithFee
             coveragePremiumAmount = plc?.TotalPremiumWithFee,  // captured: CoveragePremiumAmount = TotalPremiumWithFee
             totalPremiumWithoutRateModification = plc?.TotalPremiumWithoutRateModification,
 
             // Per-peril premium values
-            excessBlanketPLValue = plc?.ExcessBlanketPlValue,
-            sinkholeValue = plc?.SinkholeCatastrophicGroundCollapseValue,
-            earthquakeValue = plc?.EarthquakeValue,
-            floodValue = plc?.FloodValue,
-            windValue = plc?.WindHailValue,
-            wildfireValue = plc?.WildFireValue,
-            residentWorkerNFValue = plc?.ResidentWorkerNfmValue,
-            smallScaleFarmingEndorsementValue = plc?.SmallScaleFarmingEndorsementValue,
-            landEndorsementValue = plc?.LandlordEndorsementValue,
-            homeOfficeEndorsementValue = plc?.HomeOfficeEndorsementValue,
+            excessBlanketPLValue = plc?.ExcessBlanketPlValueEx ?? plc?.ExcessBlanketPlValue,
+            sinkholeValue = plc?.SinkholeCatastrophicGroundCollapseValueEx ?? plc?.SinkholeCatastrophicGroundCollapseValue,
+            earthquakeValue = plc?.EarthquakeValueEx ?? plc?.EarthquakeValue,
+            floodValue = plc?.FloodValueEx ?? plc?.FloodValue,
+            windValue = plc?.WindHailValueEx ?? plc?.WindHailValue,
+            wildfireValue = plc?.WildFireValueEx ?? plc?.WildFireValue,
+            residentWorkerNFValue = plc?.ResidentWorkerNfmValueEx ?? plc?.ResidentWorkerNfmValue,
+            smallScaleFarmingEndorsementValue = plc?.SmallScaleFarmingEndorsementValueEx ?? plc?.SmallScaleFarmingEndorsementValue,
+            landEndorsementValue = plc?.LandlordEndorsementValueEx ?? plc?.LandlordEndorsementValue,
+            homeOfficeEndorsementValue = plc?.HomeOfficeEndorsementValueEx ?? plc?.HomeOfficeEndorsementValue,
 
             // From PolicyRiskInformation
             buildingFloodElevation = risk?.BuildingFloodElevation,

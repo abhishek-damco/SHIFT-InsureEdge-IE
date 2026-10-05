@@ -4,10 +4,14 @@ using InsureEdge.Application.Interfaces;
 using InsureEdge.Domain.Entities;
 using InsureEdge.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace InsureEdge.Infrastructure.Services;
 
-public class IntermediaryService(InsureEdgeDbContext db, ICurrentTenantService tenant)
+public class IntermediaryService(
+    InsureEdgeDbContext db, ICurrentTenantService tenant,
+    IEmailService email, IConfiguration config, ILogger<IntermediaryService> log)
 {
     public async Task<List<IntermediaryListItemDto>> GetListAsync()
         => await db.Intermediaries
@@ -48,7 +52,40 @@ public class IntermediaryService(InsureEdgeDbContext db, ICurrentTenantService t
         };
         db.Intermediaries.Add(intermediary);
         await db.SaveChangesAsync();
+
+        // DisburseCloud registration invite — fires once, only at creation (per team-provided
+        // "Hudson Bailey - DisburseCloud Process and Onboarding" doc: "This will be included
+        // in an email to the Intermediary once the record has been created"). Encryption of
+        // the encodedValue query param is skipped for now per team decision.
+        if (!string.IsNullOrWhiteSpace(intermediary.CommissionDisburseEmail))
+            await SendDisburseCloudRegistrationEmailAsync(intermediary);
+
         return Map(intermediary);
+    }
+
+    private async Task SendDisburseCloudRegistrationEmailAsync(Intermediary intermediary)
+    {
+        try
+        {
+            var baseUrl = config["DISBURSEMENT_BASE_URL"];
+            var secretKey = config["DISBURSEMENT_COMPANY_SECRET_KEY"];
+            if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(secretKey))
+            {
+                log.LogWarning("DisburseCloud registration email skipped for intermediary {Id}: DISBURSEMENT_BASE_URL/DISBURSEMENT_COMPANY_SECRET_KEY not configured.", intermediary.Id);
+                return;
+            }
+
+            var vatNo = (intermediary.FederalTaxId ?? "").Replace("-", "");
+            var encodedValue = $"{intermediary.CommissionDisburseEmail}|Agency|{vatNo}|{intermediary.IntermediaryName}";
+            var registerUrl = $"{baseUrl}?companySecretKey={Uri.EscapeDataString(secretKey)}&encodedValue={Uri.EscapeDataString(encodedValue)}";
+
+            await email.SendDisburseCloudRegistrationAsync(intermediary.CommissionDisburseEmail!, intermediary.IntermediaryName, registerUrl);
+        }
+        catch (Exception ex)
+        {
+            // Registration email failing should never block intermediary creation itself.
+            log.LogError(ex, "Failed to send DisburseCloud registration email for intermediary {Id}", intermediary.Id);
+        }
     }
 
     public async Task<IntermediaryDetailDto?> UpdateAsync(long id, SaveIntermediaryRequest req)

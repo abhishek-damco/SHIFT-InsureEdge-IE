@@ -9,6 +9,9 @@ public interface IEmailService
 {
     Task SendPasswordResetAsync(string toEmail, string toName, string resetUrl);
     Task SendOnboardingWelcomeAsync(string toEmail, string toName, string setupUrl, string adminEmail);
+    // DisburseCloud registration invite — sent once, when an Intermediary is created with a
+    // CommissionDisburseEmail set (see IntermediaryService.CreateAsync).
+    Task SendDisburseCloudRegistrationAsync(string toEmail, string companyName, string registerUrl);
 
     Task SendQueryAsync(
         string fromEmail,

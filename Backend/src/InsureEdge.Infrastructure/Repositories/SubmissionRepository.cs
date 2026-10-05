@@ -16,6 +16,7 @@ using InsureEdge.Application.DTOs.QuotesPolicies;
 using InsureEdge.Application.Interfaces;
 using InsureEdge.Domain.Entities;
 using InsureEdge.Infrastructure.Data;
+using InsureEdge.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace InsureEdge.Infrastructure.Repositories;
@@ -24,12 +25,14 @@ public class SubmissionRepository : ISubmissionRepository
 {
     private readonly InsureEdgeDbContext _db;
     private readonly ProducerScope? _producerScope;
+    private readonly LenderDockNotificationService _lenderDock;
     private static readonly Random _rng = new();
 
-    public SubmissionRepository(InsureEdgeDbContext db, ICurrentTenantService tenant)
+    public SubmissionRepository(InsureEdgeDbContext db, ICurrentTenantService tenant, LenderDockNotificationService lenderDock)
     {
         _db = db;
         _producerScope = ProducerScope.FromTenant(tenant);
+        _lenderDock = lenderDock;
     }
 
     public async Task<SubmissionDto> CreateAsync(long clientId, long userId, CreateSubmissionRequest req)
@@ -840,6 +843,11 @@ public class SubmissionRepository : ISubmissionRepository
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
+        // NotifyLenderDockForEndorsement — fire-and-forget so a slow/down LenderDock never
+        // blocks the endorsement issue response.
+        _lenderDock.NotifyEndorsementFireAndForget(policy.Id,
+            policy.Extended?.EndorsementEffectiveDate ?? DateOnly.FromDateTime(DateTime.UtcNow));
+
         return new IssuePolicyResponse(true, policy.PolicyNumber, "Active", screenCode,
             $"Endorsement for policy {policy.PolicyNumber} has been issued successfully.");
     }
@@ -1350,6 +1358,7 @@ public class SubmissionRepository : ISubmissionRepository
         var landlordEndorsement = BlankToNull(StringOrNull(form, "landlordEndorsement"));
         var homeOfficeEndorsement = BlankToNull(StringOrNull(form, "homeOfficeEndorsement"));
 
+        var isNewCoverage = coverage == null;
         if (coverage == null)
         {
             coverage = new PolicyLimitCoverage { ClientId = clientId, PolicyId = policy.Id };
@@ -1374,6 +1383,41 @@ public class SubmissionRepository : ISubmissionRepository
         coverage.SmallScaleFarmingEndorsement = smallScaleFarmingEndorsement ?? coverage.SmallScaleFarmingEndorsement;
         coverage.LandlordEndorsement = landlordEndorsement ?? coverage.LandlordEndorsement;
         coverage.HomeOfficeEndorsement = homeOfficeEndorsement ?? coverage.HomeOfficeEndorsement;
+
+        // _EX fields: capture the rating-engine/Excel-computed value ONCE, at the moment this
+        // policy's coverage row is first created — never touched again afterward, even as the
+        // plain fields above keep being overwritten by later saves (e.g. user edits on "Plans
+        // Overview"). See PolicyLimitCoverage.cs header for why this exists.
+        if (isNewCoverage)
+        {
+            coverage.PhysicalDamageDeductibleEx = coverage.PhysicalDamageDeductible;
+            coverage.RateModificationEx = coverage.RateModification;
+            coverage.BasePremiumEx = coverage.BasePremium;
+            coverage.PriorPolicyPeriodPremiumEx = coverage.PriorPolicyPeriodPremium;
+            coverage.LiabilityCoverageEx = coverage.LiabilityCoverage;
+            coverage.ExcessBlanketPlEx = coverage.ExcessBlanketPl;
+            coverage.SinkholeCatastrophicGroundCollapseEx = coverage.SinkholeCatastrophicGroundCollapse;
+            coverage.EarthquakeEx = coverage.Earthquake;
+            coverage.FloodEx = coverage.Flood;
+            coverage.WindHailEx = coverage.WindHail;
+            coverage.WildFireEx = coverage.WildFire;
+            coverage.ResidentWorkerNfmEx = coverage.ResidentWorkerNfm;
+            coverage.SmallScaleFarmingEndorsementEx = coverage.SmallScaleFarmingEndorsement;
+            coverage.LandlordEndorsementEx = coverage.LandlordEndorsement;
+            coverage.HomeOfficeEndorsementEx = coverage.HomeOfficeEndorsement;
+            coverage.CoverageLevelEx = coverage.CoverageLevel;
+            coverage.CoveredLiabilitySirEx = coverage.CoveredLiabilitySir;
+            coverage.ExcessBlanketPlValueEx = coverage.ExcessBlanketPlValue;
+            coverage.SinkholeCatastrophicGroundCollapseValueEx = coverage.SinkholeCatastrophicGroundCollapseValue;
+            coverage.EarthquakeValueEx = coverage.EarthquakeValue;
+            coverage.FloodValueEx = coverage.FloodValue;
+            coverage.WindHailValueEx = coverage.WindHailValue;
+            coverage.WildFireValueEx = coverage.WildFireValue;
+            coverage.ResidentWorkerNfmValueEx = coverage.ResidentWorkerNfmValue;
+            coverage.SmallScaleFarmingEndorsementValueEx = coverage.SmallScaleFarmingEndorsementValue;
+            coverage.LandlordEndorsementValueEx = coverage.LandlordEndorsementValue;
+            coverage.HomeOfficeEndorsementValueEx = coverage.HomeOfficeEndorsementValue;
+        }
 
         // Additional named insureds / organizations live as top-level arrays in the
         // draft JSON ({form, locations, mortgages, additionalInsureds, additionalOrgs}).

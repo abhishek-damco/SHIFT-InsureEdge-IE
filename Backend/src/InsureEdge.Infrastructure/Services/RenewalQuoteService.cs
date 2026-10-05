@@ -512,13 +512,19 @@ public class RenewalQuoteService
 
         foreach (var coverage in sourceCoverages)
         {
+            // NOTE: pre-existing gap (not introduced here) — only copies 3 of ~35 coverage
+            // fields; DwellingAssetLimit and most others are silently dropped on renewal.
+            // Out of scope for the _EX pairing work; only adding _EX for the 2 fields this
+            // already copies, to keep them consistent with the plain values.
             var newCoverage = new PolicyLimitCoverage
             {
                 PolicyId = targetPolicyId,
                 ClientId = clientId,
                 CalculatedPremium = coverage.CalculatedPremium,
                 PhysicalDamageDeductible = coverage.PhysicalDamageDeductible,
+                PhysicalDamageDeductibleEx = coverage.PhysicalDamageDeductibleEx,
                 CoverageLevel = coverage.CoverageLevel,
+                CoverageLevelEx = coverage.CoverageLevelEx,
             };
             _db.PolicyLimitCoverages.Add(newCoverage);
         }

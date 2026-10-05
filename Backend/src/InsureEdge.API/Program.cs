@@ -103,6 +103,23 @@ builder.Services.AddScoped<InsureEdge.Infrastructure.Services.IntermediaryScreen
 builder.Services.AddScoped<AutoRenewalTimerJob>();
 builder.Services.AddHostedService<AutoRenewalHostedService>();
 
+// DisburseCloud: monthly intermediary commission payout (ported from OutSystems
+// IntermediaryCommissionDisburseCloud). See Backend/db/042_intermediary_disbursement.sql.
+builder.Services.AddHttpClient("disbursecloud", c => c.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddScoped<InsureEdge.Application.Interfaces.IDisburseCloudClient, InsureEdge.Infrastructure.Services.DisburseCloudClient>();
+builder.Services.AddScoped<InsureEdge.Infrastructure.BackgroundJobs.IntermediaryCommissionDisburseTimerJob>();
+builder.Services.AddHostedService<InsureEdge.Infrastructure.BackgroundJobs.IntermediaryCommissionDisburseHostedService>();
+
+// LenderDock: mortgagee bill/coverage notifications for Endorsement, Cancellation, and
+// Cancel/Rewrite (ported from OutSystems NotifyLenderDockFor*). See
+// LenderDockNotificationService for the fire-and-forget dispatch pattern.
+builder.Services.AddHttpClient("lenderdock", c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddScoped<InsureEdge.Application.Interfaces.ILenderDockClient, InsureEdge.Infrastructure.Services.LenderDockClient>();
+builder.Services.AddScoped<InsureEdge.Infrastructure.Services.LenderDockRequestBuilder>();
+builder.Services.AddSingleton<InsureEdge.Infrastructure.Services.LenderDockNotificationService>();
+builder.Services.AddScoped<InsureEdge.Infrastructure.Services.LenderDockInboundService>();
+builder.Services.AddScoped<InsureEdge.API.Filters.LenderDockBasicAuthFilter>();
+
 // --- Infrastructure ---
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();

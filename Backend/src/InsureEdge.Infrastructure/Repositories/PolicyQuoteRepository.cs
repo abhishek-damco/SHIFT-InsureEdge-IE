@@ -21,11 +21,13 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
 {
     private readonly InsureEdgeDbContext _db;
     private readonly IDocumentGenerationService _documents;
+    private readonly InsureEdge.Infrastructure.Services.LenderDockNotificationService _lenderDock;
 
-    public PolicyQuoteRepository(InsureEdgeDbContext db, IDocumentGenerationService documents)
+    public PolicyQuoteRepository(InsureEdgeDbContext db, IDocumentGenerationService documents, InsureEdge.Infrastructure.Services.LenderDockNotificationService lenderDock)
     {
         _db = db;
         _documents = documents;
+        _lenderDock = lenderDock;
     }
 
     // ─── NB Quotes ────────────────────────────────────────────────────────────
@@ -1038,32 +1040,59 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
                 CalculatedPremium = lc.CalculatedPremium,
                 Tiv = lc.Tiv,
                 PhysicalDamageDeductible = lc.PhysicalDamageDeductible,
+                PhysicalDamageDeductibleEx = lc.PhysicalDamageDeductibleEx,
                 CoverageLevel = lc.CoverageLevel,
+                CoverageLevelEx = lc.CoverageLevelEx,
                 LiabilityCoverage = lc.LiabilityCoverage,
+                LiabilityCoverageEx = lc.LiabilityCoverageEx,
                 ExcessBlanketPl = lc.ExcessBlanketPl,
+                ExcessBlanketPlEx = lc.ExcessBlanketPlEx,
                 CoveredLiabilitySir = lc.CoveredLiabilitySir,
+                CoveredLiabilitySirEx = lc.CoveredLiabilitySirEx,
                 SinkholeCatastrophicGroundCollapse = lc.SinkholeCatastrophicGroundCollapse,
+                SinkholeCatastrophicGroundCollapseEx = lc.SinkholeCatastrophicGroundCollapseEx,
                 Earthquake = lc.Earthquake,
+                EarthquakeEx = lc.EarthquakeEx,
                 Flood = lc.Flood,
+                FloodEx = lc.FloodEx,
                 WindHail = lc.WindHail,
+                WindHailEx = lc.WindHailEx,
                 WildFire = lc.WildFire,
+                WildFireEx = lc.WildFireEx,
                 ResidentWorkerNfm = lc.ResidentWorkerNfm,
+                ResidentWorkerNfmEx = lc.ResidentWorkerNfmEx,
                 SmallScaleFarmingEndorsement = lc.SmallScaleFarmingEndorsement,
+                SmallScaleFarmingEndorsementEx = lc.SmallScaleFarmingEndorsementEx,
                 LandlordEndorsement = lc.LandlordEndorsement,
+                LandlordEndorsementEx = lc.LandlordEndorsementEx,
                 HomeOfficeEndorsement = lc.HomeOfficeEndorsement,
+                HomeOfficeEndorsementEx = lc.HomeOfficeEndorsementEx,
                 PriorPolicyPeriodPremium = lc.PriorPolicyPeriodPremium,
+                PriorPolicyPeriodPremiumEx = lc.PriorPolicyPeriodPremiumEx,
                 RateModification = lc.RateModification,
+                RateModificationEx = lc.RateModificationEx,
                 ExcessBlanketPlValue = lc.ExcessBlanketPlValue,
+                ExcessBlanketPlValueEx = lc.ExcessBlanketPlValueEx,
                 SinkholeCatastrophicGroundCollapseValue = lc.SinkholeCatastrophicGroundCollapseValue,
+                SinkholeCatastrophicGroundCollapseValueEx = lc.SinkholeCatastrophicGroundCollapseValueEx,
                 EarthquakeValue = lc.EarthquakeValue,
+                EarthquakeValueEx = lc.EarthquakeValueEx,
                 FloodValue = lc.FloodValue,
+                FloodValueEx = lc.FloodValueEx,
                 WindHailValue = lc.WindHailValue,
+                WindHailValueEx = lc.WindHailValueEx,
                 WildFireValue = lc.WildFireValue,
+                WildFireValueEx = lc.WildFireValueEx,
                 ResidentWorkerNfmValue = lc.ResidentWorkerNfmValue,
+                ResidentWorkerNfmValueEx = lc.ResidentWorkerNfmValueEx,
                 SmallScaleFarmingEndorsementValue = lc.SmallScaleFarmingEndorsementValue,
+                SmallScaleFarmingEndorsementValueEx = lc.SmallScaleFarmingEndorsementValueEx,
                 LandlordEndorsementValue = lc.LandlordEndorsementValue,
+                LandlordEndorsementValueEx = lc.LandlordEndorsementValueEx,
                 HomeOfficeEndorsementValue = lc.HomeOfficeEndorsementValue,
+                HomeOfficeEndorsementValueEx = lc.HomeOfficeEndorsementValueEx,
                 BasePremium = lc.BasePremium,
+                BasePremiumEx = lc.BasePremiumEx,
                 TotalPremiumWithFee = lc.TotalPremiumWithFee,
                 TotalPremiumWithoutRateModification = lc.TotalPremiumWithoutRateModification,
                 CreatedBy = userId,
@@ -2041,6 +2070,10 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
         });
         await _db.SaveChangesAsync();
 
+        // NotifyLenderDockForCancelledPolicy — async per OutSystems' "InformLenderdockForCancellation"
+        // process wrapper (confirmed async there, unlike Endorsement/CancelRewrite).
+        _lenderDock.NotifyCancellationFireAndForget(policy.Id, request.CancellationEffectiveDate, request.ReasonOfCancellation);
+
         return new CancelPolicyResultDto(policy.PolicyNumber, policy.PolicyStatus);
     }
 
@@ -2194,11 +2227,14 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
         await _db.SaveChangesAsync();
 
         // Cancel the original policy only after the replacement is fully built
-        // (mirrors MakePriorPolicyCancelled_HB). Lender Dock notification deferred/mocked.
+        // (mirrors MakePriorPolicyCancelled_HB).
         source.PolicyStatus = "Cancelled";
         source.UpdatedBy = userId;
         source.UpdatedOn = now;
         await _db.SaveChangesAsync();
+
+        // NotifyLenderDockForCancelRewrite
+        _lenderDock.NotifyCancelRewriteFireAndForget(source.Id, request.CancellationEffectiveDate);
 
         return new CancelRewriteResultDto(source.PolicyNumber, draft.Id, draft.PolicyNumber, quoteNumber);
     }

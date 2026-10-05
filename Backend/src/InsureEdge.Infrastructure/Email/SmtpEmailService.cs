@@ -57,6 +57,15 @@ public class SmtpEmailService : IEmailService
         await SendAsync(toEmail, toName, "Welcome to Hudson Bailey InsureEdge", html, text);
     }
 
+    public async Task SendDisburseCloudRegistrationAsync(string toEmail, string companyName, string registerUrl)
+    {
+        var html = await LoadAndReplaceAsync("DisburseCloudRegistration.html",
+            ("{{COMPANY_NAME}}", companyName), ("{{REGISTER_URL}}", registerUrl));
+        var text = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+        await SendAsync(toEmail, companyName, "DisburseCloud Registration", html, text);
+    }
+
     public async Task SendQueryAsync(
         string fromEmail,
         IEnumerable<string> to,

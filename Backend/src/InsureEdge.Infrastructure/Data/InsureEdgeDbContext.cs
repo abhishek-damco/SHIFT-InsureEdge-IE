@@ -79,6 +79,8 @@ public class InsureEdgeDbContext : DbContext
     public DbSet<Intermediary> Intermediaries => Set<Intermediary>();
     public DbSet<Producer> Producers => Set<Producer>();
     public DbSet<IntermediaryScreenPermission> IntermediaryScreenPermissions => Set<IntermediaryScreenPermission>();
+    public DbSet<IntermediaryContact> IntermediaryContacts => Set<IntermediaryContact>();
+    public DbSet<IntermediaryProducerAddress> IntermediaryProducerAddresses => Set<IntermediaryProducerAddress>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<PolicyAccount> PolicyAccounts => Set<PolicyAccount>();
     public DbSet<PolicyExtended> PolicyExtendeds => Set<PolicyExtended>();
@@ -811,6 +813,39 @@ public class InsureEdgeDbContext : DbContext
             e.HasMany(x => x.Producers).WithOne(p => p.Intermediary).HasForeignKey(p => p.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<IntermediaryContact>(e =>
+        {
+            e.ToTable("intermediary_contact");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Title).HasMaxLength(50);
+            e.Property(x => x.TelephoneNumberCC).HasMaxLength(10);
+            e.Property(x => x.TelephoneNumber).HasMaxLength(20);
+            e.Property(x => x.AltTelephoneNumberCC).HasMaxLength(10);
+            e.Property(x => x.AltTelephoneNumber).HasMaxLength(20);
+            e.Property(x => x.Email).HasMaxLength(100);
+            e.Property(x => x.Extension).HasMaxLength(10);
+            e.Property(x => x.Suffix).HasMaxLength(10);
+            e.HasOne(x => x.Intermediary).WithMany().HasForeignKey(x => x.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IntermediaryProducerAddress>(e =>
+        {
+            e.ToTable("intermediary_producer_address");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.AddressLine1).HasMaxLength(200);
+            e.Property(x => x.AddressLine2).HasMaxLength(200);
+            e.Property(x => x.Country).HasMaxLength(50);
+            e.Property(x => x.State).HasMaxLength(50);
+            e.Property(x => x.City).HasMaxLength(100);
+            e.Property(x => x.ZipCode).HasMaxLength(20);
+            e.Property(x => x.Latitude).HasMaxLength(50);
+            e.Property(x => x.Longitude).HasMaxLength(50);
+            e.Property(x => x.County).HasMaxLength(100);
+            e.HasOne(x => x.Intermediary).WithMany().HasForeignKey(x => x.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Producer).WithMany().HasForeignKey(x => x.ProducerId).IsRequired(false);
+        });
+
         modelBuilder.Entity<Producer>(e =>
         {
             e.ToTable("producer");
@@ -922,6 +957,19 @@ public class InsureEdgeDbContext : DbContext
             e.Property(x => x.SmallScaleFarmingEndorsement).HasMaxLength(50);
             e.Property(x => x.LandlordEndorsement).HasMaxLength(50);
             e.Property(x => x.HomeOfficeEndorsement).HasMaxLength(50);
+            e.Property(x => x.CoverageLevelEx).HasMaxLength(50);
+            e.Property(x => x.LiabilityCoverageEx).HasMaxLength(50);
+            e.Property(x => x.ExcessBlanketPlEx).HasMaxLength(50);
+            e.Property(x => x.CoveredLiabilitySirEx).HasMaxLength(50);
+            e.Property(x => x.SinkholeCatastrophicGroundCollapseEx).HasMaxLength(50);
+            e.Property(x => x.EarthquakeEx).HasMaxLength(50);
+            e.Property(x => x.FloodEx).HasMaxLength(50);
+            e.Property(x => x.WindHailEx).HasMaxLength(50);
+            e.Property(x => x.WildFireEx).HasMaxLength(50);
+            e.Property(x => x.ResidentWorkerNfmEx).HasMaxLength(50);
+            e.Property(x => x.SmallScaleFarmingEndorsementEx).HasMaxLength(50);
+            e.Property(x => x.LandlordEndorsementEx).HasMaxLength(50);
+            e.Property(x => x.HomeOfficeEndorsementEx).HasMaxLength(50);
         });
 
         modelBuilder.Entity<PolicyPremium>(e =>
