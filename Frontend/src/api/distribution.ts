@@ -60,6 +60,7 @@ export const distributionApi = {
   producerAddress: {
     get:    (pid: number)              => apiClient.get<any>(`/distribution/producers/${pid}/address`).then(r => r.data),
     create: (pid: number, data: any)   => apiClient.post<any>(`/distribution/producers/${pid}/address`, data).then(r => r.data),
+    update: (pid: number, aid: number, data: any) => apiClient.put<any>(`/distribution/producers/${pid}/address/${aid}`, data).then(r => r.data),
   },
 
   bulkUpload: {

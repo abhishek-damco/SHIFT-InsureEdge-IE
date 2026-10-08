@@ -4,6 +4,7 @@ import { usersApi, referenceApi, sanitizePermissions } from '../../api/users';
 import type { CountryRow, StateRow, GroupRow, ManagerRow, OptionRow, ModuleRow, PermissionInput } from '../../types/User';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import PermissionsGrid from './PermissionsGrid';
+import { AddressFields, type AddressFieldName, type AddressFieldsValue } from '../../components/address/AddressFields';
 
 const GENDERS = ['Male', 'Female', 'Non-Binary', 'Prefer not to say'];
 const DEPARTMENTS = [
@@ -21,6 +22,7 @@ interface FormState {
   isRemoteWorking: boolean; isManager: boolean;
   officeLocation: string; groupId: string; department: string; reportsTo: string;
   sameAsOffice: boolean;
+  googleSearch: string; enterManually: boolean;
   addressLine1: string; addressLine2: string;
   country: string; state: string; city: string; zipCode: string;
   latitude: string; longitude: string;
@@ -34,6 +36,7 @@ const EMPTY: FormState = {
   isRemoteWorking: true, isManager: false,
   officeLocation: '', groupId: '', department: '', reportsTo: '',
   sameAsOffice: false,
+  googleSearch: '', enterManually: false,
   addressLine1: '', addressLine2: '', country: '', state: '', city: '', zipCode: '',
   latitude: '', longitude: '',
   telephone: '', extension: '', altTelephone: '', email: '',
@@ -168,6 +171,13 @@ export default function UserForm() {
     else setStates([]);
   }, [form.country]);
 
+  // Google returns a state name; User Management persists the reference-state code.
+  // Normalize only after the selected country's options have been loaded.
+  useEffect(() => {
+    const match = states.find(state => state.name === form.state);
+    if (match && match.code !== form.state) setForm(current => ({ ...current, state: match.code }));
+  }, [states, form.state]);
+
   useEffect(() => {
     if (!form.groupId || isEdit) return;
     referenceApi.groupPermissions(Number(form.groupId)).then(rows => {
@@ -211,6 +221,7 @@ export default function UserForm() {
         department: u.department ?? '',
         reportsTo: u.reportsTo ? String(u.reportsTo) : '',
         sameAsOffice: false,
+        googleSearch: '', enterManually: false,
         addressLine1: u.addressLine1 ?? '', addressLine2: u.addressLine2 ?? '',
         country: u.countryCode ?? '', state: u.stateCode ?? '',
         city: u.city ?? '', zipCode: u.zipCode ?? '',
@@ -262,6 +273,29 @@ export default function UserForm() {
   const countryOpts = countries.map(c => ({ value: c.code, label: c.name }));
   const stateOpts = states.map(s => ({ value: s.code, label: s.name }));
   const addrDisabled = form.sameAsOffice;
+  const addressValue: AddressFieldsValue = {
+    googleSearch: form.googleSearch, enterManually: form.enterManually,
+    addressLine1: form.addressLine1, addressLine2: form.addressLine2,
+    country: form.country, state: form.state, city: form.city, county: '', zipCode: form.zipCode,
+    latitude: form.latitude, longitude: form.longitude,
+  };
+  const setAddress = (field: AddressFieldName, value: string | boolean) => {
+    if (field === 'country') {
+      const country = countryOpts.find(option => option.value === value || option.label === value)?.value ?? String(value);
+      set('country', country); return;
+    }
+    if (field === 'state') {
+      const state = stateOpts.find(option => option.value === value || option.label === value)?.value ?? String(value);
+      set('state', state); return;
+    }
+    if (field === 'county') return;
+    const userField: Partial<Record<AddressFieldName, keyof FormState>> = {
+      googleSearch: 'googleSearch', enterManually: 'enterManually', addressLine1: 'addressLine1', addressLine2: 'addressLine2',
+      city: 'city', zipCode: 'zipCode', latitude: 'latitude', longitude: 'longitude',
+    };
+    const userKey = userField[field];
+    if (userKey) set(userKey, value as never);
+  };
 
   const card: React.CSSProperties = {
     background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
@@ -452,52 +486,15 @@ export default function UserForm() {
                   <span style={{ fontSize: 13, color: '#374151' }}>Same as Office Location</span>
                 </label>
 
-                <div style={row2}>
-                  <div>
-                    <Label required>Address Line 1</Label>
-                    <input value={form.addressLine1} disabled={addrDisabled} onChange={e => set('addressLine1', e.target.value)}
-                      style={addrDisabled ? disabledInputStyle : inputStyle} />
-                  </div>
-                  <div>
-                    <Label>Address Line 2</Label>
-                    <input value={form.addressLine2} disabled={addrDisabled} onChange={e => set('addressLine2', e.target.value)}
-                      style={addrDisabled ? disabledInputStyle : inputStyle} />
-                  </div>
-                </div>
-
-                <div style={row3}>
-                  <div>
-                    <Label required>Country</Label>
-                    <SearchableSelect options={countryOpts} value={form.country} onChange={v => set('country', v)} placeholder="Select..." disabled={addrDisabled} />
-                  </div>
-                  <div>
-                    <Label required>State</Label>
-                    <SearchableSelect options={stateOpts} value={form.state} onChange={v => set('state', v)} placeholder="Select..." disabled={addrDisabled || !form.country} />
-                  </div>
-                  <div>
-                    <Label required>City</Label>
-                    <input value={form.city} disabled={addrDisabled} onChange={e => set('city', e.target.value)}
-                      style={addrDisabled ? disabledInputStyle : inputStyle} />
-                  </div>
-                </div>
-
-                <div style={row3}>
-                  <div>
-                    <Label required>Zip Code</Label>
-                    <input value={form.zipCode} disabled={addrDisabled} onChange={e => set('zipCode', e.target.value)}
-                      style={addrDisabled ? disabledInputStyle : inputStyle} />
-                  </div>
-                  <div>
-                    <Label>Latitude</Label>
-                    <input value={form.latitude} disabled={addrDisabled} onChange={e => set('latitude', e.target.value)}
-                      style={addrDisabled ? disabledInputStyle : inputStyle} />
-                  </div>
-                  <div>
-                    <Label>Longitude</Label>
-                    <input value={form.longitude} disabled={addrDisabled} onChange={e => set('longitude', e.target.value)}
-                      style={addrDisabled ? disabledInputStyle : inputStyle} />
-                  </div>
-                </div>
+                <AddressFields
+                  value={addressValue}
+                  onChange={setAddress}
+                  countryOptions={countryOpts}
+                  stateOptions={stateOpts}
+                  disabled={addrDisabled}
+                  showCounty={false}
+                  coordinatesReadOnly={false}
+                />
               </div>
             </div>
 

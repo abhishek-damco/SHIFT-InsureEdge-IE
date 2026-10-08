@@ -1,4 +1,4 @@
-﻿// AI_GENERATED | HUMAN_VALIDATION_REQUIRED
+// AI_GENERATED | HUMAN_VALIDATION_REQUIRED
 // ADR-005: UseSnakeCaseNamingConvention â€” all column/table names are snake_case in PostgreSQL
 // ADR-010: Global Query Filters enforce tenant isolation on every query
 using InsureEdge.Domain.Entities;
@@ -77,9 +77,14 @@ public class InsureEdgeDbContext : DbContext
 
     // ── Quotes & Policies (Underwriting) ────────────────────────────────────────────────
     public DbSet<Intermediary> Intermediaries => Set<Intermediary>();
-    public DbSet<Producer> Producers => Set<Producer>();
-    public DbSet<IntermediaryScreenPermission> IntermediaryScreenPermissions => Set<IntermediaryScreenPermission>();
+    public DbSet<IntermediaryCommission> IntermediaryCommissions => Set<IntermediaryCommission>();
+    public DbSet<IntermediaryAddress> IntermediaryAddresses => Set<IntermediaryAddress>();
     public DbSet<IntermediaryContact> IntermediaryContacts => Set<IntermediaryContact>();
+    public DbSet<IntermediaryNrState> IntermediaryNrStates => Set<IntermediaryNrState>();
+    public DbSet<Producer> Producers => Set<Producer>();
+    public DbSet<ProducerAddress> ProducerAddresses => Set<ProducerAddress>();
+    public DbSet<ProducerNrState> ProducerNrStates => Set<ProducerNrState>();
+    public DbSet<IntermediaryScreenPermission> IntermediaryScreenPermissions => Set<IntermediaryScreenPermission>();
     public DbSet<IntermediaryProducerAddress> IntermediaryProducerAddresses => Set<IntermediaryProducerAddress>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<PolicyAccount> PolicyAccounts => Set<PolicyAccount>();
@@ -812,24 +817,7 @@ public class InsureEdgeDbContext : DbContext
             e.HasIndex(x => new { x.ClientId, x.IntermediaryCode }).IsUnique();
             e.HasMany(x => x.Producers).WithOne(p => p.Intermediary).HasForeignKey(p => p.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
         });
-
-        modelBuilder.Entity<IntermediaryContact>(e =>
-        {
-            e.ToTable("intermediary_contact");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Name).HasMaxLength(100);
-            e.Property(x => x.Title).HasMaxLength(50);
-            e.Property(x => x.TelephoneNumberCC).HasMaxLength(10);
-            e.Property(x => x.TelephoneNumber).HasMaxLength(20);
-            e.Property(x => x.AltTelephoneNumberCC).HasMaxLength(10);
-            e.Property(x => x.AltTelephoneNumber).HasMaxLength(20);
-            e.Property(x => x.Email).HasMaxLength(100);
-            e.Property(x => x.Extension).HasMaxLength(10);
-            e.Property(x => x.Suffix).HasMaxLength(10);
-            e.HasOne(x => x.Intermediary).WithMany().HasForeignKey(x => x.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<IntermediaryProducerAddress>(e =>
+modelBuilder.Entity<IntermediaryProducerAddress>(e =>
         {
             e.ToTable("intermediary_producer_address");
             e.HasKey(x => x.Id);
@@ -842,8 +830,32 @@ public class InsureEdgeDbContext : DbContext
             e.Property(x => x.Latitude).HasMaxLength(50);
             e.Property(x => x.Longitude).HasMaxLength(50);
             e.Property(x => x.County).HasMaxLength(100);
-            e.HasOne(x => x.Intermediary).WithMany().HasForeignKey(x => x.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(x => x.Producer).WithMany().HasForeignKey(x => x.ProducerId).IsRequired(false);
+            e.HasOne(x => x.Intermediary).WithMany()
+                .HasForeignKey(x => x.IntermediaryId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Producer).WithMany()
+                .HasForeignKey(x => x.ProducerId)
+                .IsRequired(false);
+        });
+
+        modelBuilder.Entity<IntermediaryCommission>(e =>
+        {
+            e.ToTable("intermediary_commission");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.InsuranceType).IsRequired().HasMaxLength(50);
+            e.Property(x => x.JuridictionState).IsRequired().HasMaxLength(2);
+            e.Property(x => x.NewBusinessCommission).HasPrecision(5, 2);
+            e.Property(x => x.RenewalCommission).HasPrecision(5, 2);
+            e.HasIndex(x => new { x.ClientId, x.IntermediaryId });
+            e.HasOne(x => x.Intermediary).WithMany()
+                .HasForeignKey(x => x.IntermediaryId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Product).WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.SubProduct).WithMany()
+                .HasForeignKey(x => x.SubProductId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Producer>(e =>
@@ -870,6 +882,51 @@ public class InsureEdgeDbContext : DbContext
             e.Property(x => x.Gender).HasMaxLength(50);
             e.Property(x => x.PersonalBio).HasMaxLength(1000);
             e.HasOne(x => x.Manager).WithMany().HasForeignKey(x => x.ManagerId).IsRequired(false);
+        });
+
+        modelBuilder.Entity<IntermediaryAddress>(e =>
+        {
+            e.ToTable("intermediary_address"); e.HasKey(x => x.Id);
+            e.Property(x => x.AddressLine1).HasMaxLength(250); e.Property(x => x.AddressLine2).HasMaxLength(250);
+            e.Property(x => x.Country).HasMaxLength(100); e.Property(x => x.State).HasMaxLength(100);
+            e.Property(x => x.City).HasMaxLength(100); e.Property(x => x.County).HasMaxLength(100);
+            e.Property(x => x.ZipCode).HasMaxLength(30); e.Property(x => x.Latitude).HasMaxLength(50); e.Property(x => x.Longitude).HasMaxLength(50);
+            e.HasIndex(x => new { x.ClientId, x.IntermediaryId }).IsUnique();
+            e.HasOne(x => x.Intermediary).WithMany().HasForeignKey(x => x.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ProducerAddress>(e =>
+        {
+            e.ToTable("producer_address"); e.HasKey(x => x.Id);
+            e.Property(x => x.AddressLine1).HasMaxLength(250); e.Property(x => x.AddressLine2).HasMaxLength(250);
+            e.Property(x => x.Country).HasMaxLength(100); e.Property(x => x.State).HasMaxLength(100);
+            e.Property(x => x.City).HasMaxLength(100); e.Property(x => x.County).HasMaxLength(100);
+            e.Property(x => x.ZipCode).HasMaxLength(30); e.Property(x => x.Latitude).HasMaxLength(50); e.Property(x => x.Longitude).HasMaxLength(50);
+            e.HasIndex(x => new { x.ClientId, x.ProducerId }).IsUnique();
+            e.HasOne(x => x.Producer).WithMany().HasForeignKey(x => x.ProducerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IntermediaryContact>(e =>
+        {
+            e.ToTable("intermediary_contact"); e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(200); e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.EmailId).HasMaxLength(255); e.Property(x => x.TelephoneNumber).HasMaxLength(50);
+            e.Property(x => x.Extension).HasMaxLength(30); e.Property(x => x.AltTelephoneNo).HasMaxLength(50);
+            e.HasIndex(x => new { x.ClientId, x.IntermediaryId });
+            e.HasOne(x => x.Intermediary).WithMany().HasForeignKey(x => x.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<IntermediaryNrState>(e =>
+        {
+            e.ToTable("intermediary_nr_state"); e.HasKey(x => x.Id);
+            e.Property(x => x.State).IsRequired().HasMaxLength(100); e.Property(x => x.License).HasMaxLength(100);
+            e.HasIndex(x => new { x.ClientId, x.IntermediaryId, x.State }).IsUnique();
+            e.HasOne(x => x.Intermediary).WithMany().HasForeignKey(x => x.IntermediaryId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ProducerNrState>(e =>
+        {
+            e.ToTable("producer_nr_state"); e.HasKey(x => x.Id);
+            e.Property(x => x.State).IsRequired().HasMaxLength(100); e.Property(x => x.LicenseNumber).HasMaxLength(100);
+            e.HasIndex(x => new { x.ClientId, x.ProducerId, x.State }).IsUnique();
+            e.HasOne(x => x.Producer).WithMany().HasForeignKey(x => x.ProducerId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Distribution Management "Assigned Rights" — per-intermediary screen grant for

@@ -808,7 +808,9 @@ function PhoneCountrySelect({ value, onChange, disabled }: { value: string; onCh
 }
 
 // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Google Places Autocomplete ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-// API key stored in .env.local as VITE_GOOGLE_MAPS_API_KEY (never hardcoded)
+// Provided by the local or deployed frontend environment; never hardcode this value.
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
 function loadGoogleMapsScript(cb: () => void) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = window as any;
@@ -820,7 +822,7 @@ function loadGoogleMapsScript(cb: () => void) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   w.__gmapsReady = () => { (w.__gmapsCbs as any[]).forEach((fn: () => void) => fn()); delete w.__gmapsCbs; };
 
-  const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const key = GOOGLE_MAPS_API_KEY;
   if (!key) {
     console.error('[InsureEdge] VITE_GOOGLE_MAPS_API_KEY missing from .env.local ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â restart dev server after adding it');
     w.__gmapsCbs = undefined;
@@ -829,7 +831,7 @@ function loadGoogleMapsScript(cb: () => void) {
   console.log('[InsureEdge] Loading Google Maps Places scriptÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦');
   const s = document.createElement('script');
   s.id = 'gmaps-script';
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&loading=async&callback=__gmapsReady`;
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&v=weekly&loading=async&callback=__gmapsReady`;
   s.async = true;
   s.onerror = () => console.error('[InsureEdge] Google Maps script failed to load ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â check API key and billing');
   document.head.appendChild(s);
@@ -841,14 +843,12 @@ interface GooglePlaceFields {
   latitude: string; longitude: string;
 }
 
-function GoogleAddressAutocomplete({ onSelect, disabled = false, clearToken = 0, placeholder }: { onSelect: (f: GooglePlaceFields) => void; disabled?: boolean; clearToken?: number; placeholder?: string }) {
+export function GoogleAddressAutocomplete({ onSelect, disabled = false, clearToken = 0, placeholder }: { onSelect: (f: GooglePlaceFields) => void; disabled?: boolean; clearToken?: number; placeholder?: string }) {
   const [query, setQuery] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [apiStatus, setApiStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const svcRef  = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const detRef  = useRef<any>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -861,14 +861,20 @@ function GoogleAddressAutocomplete({ onSelect, disabled = false, clearToken = 0,
   }, [clearToken]);
 
   useEffect(() => {
-    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) { setApiStatus('error'); return; }
+    if (!GOOGLE_MAPS_API_KEY) { setApiStatus('error'); return; }
     loadGoogleMapsScript(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any;
-      if (!svcRef.current) svcRef.current = new w.google.maps.places.AutocompleteService();
-      if (!detRef.current) detRef.current = new w.google.maps.places.PlacesService(document.createElement('div'));
-      console.log('[InsureEdge] Google Maps Places ready');
-      setApiStatus('ready');
+      void w.google.maps.importLibrary('places')
+        .then((places: any) => {
+          if (!places.AutocompleteSuggestion) throw new Error('The Places Autocomplete Data API is unavailable.');
+          console.log('[InsureEdge] Google Maps Places ready');
+          setApiStatus('ready');
+        })
+        .catch((error: unknown) => {
+          console.error('[InsureEdge] Google Maps Places initialization failed:', error);
+          setApiStatus('error');
+        });
     });
     const onClick = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
@@ -889,8 +895,7 @@ function GoogleAddressAutocomplete({ onSelect, disabled = false, clearToken = 0,
       try {
         const { suggestions } = await gmp.AutocompleteSuggestion.fetchAutocompleteSuggestions({
           input: val,
-          includedRegionCodes: ['us', 'ca'],
-          includedPrimaryTypes: ['address'],
+          includedRegionCodes: ['US', 'CA'],
         });
         if (suggestions?.length) { setSuggestions(suggestions); setOpen(true); }
         else { setSuggestions([]); setOpen(false); }
@@ -930,7 +935,7 @@ function GoogleAddressAutocomplete({ onSelect, disabled = false, clearToken = 0,
       console.error('[InsureEdge] Place fetchFields error:', e);
       // Fallback: use legacy PlacesService if new API fails
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (!detRef.current && gmp) detRef.current = new gmp.PlacesService(document.createElement('div'));
+      if (!detRef.current && gmp?.PlacesService) detRef.current = new gmp.PlacesService(document.createElement('div'));
       if (!detRef.current) return;
       detRef.current.getDetails(
         { placeId: pred.placeId, fields: ['address_components', 'geometry'] },
@@ -995,7 +1000,7 @@ function formatZipInput(value: string) {
 }
 
 function locationMedia(loc: Pick<LocationItem, 'latitude' | 'longitude'>, type: 'photo' | 'map') {
-  const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const key = GOOGLE_MAPS_API_KEY;
   const hasGeo = Boolean(loc.latitude && loc.longitude && key);
   if (!hasGeo) return null;
   const center = `${loc.latitude},${loc.longitude}`;

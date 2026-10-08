@@ -93,24 +93,17 @@ export default function ReviewSubmitPage({
           allow_full_producer_visibility: f?.fullProducerVisibility ?? false,
           commission_disburse_email: f?.commEmail || null,
           last_step: 5,
+          address: f?.addrLine1 ? { address_line1: f.addrLine1, address_line2: f.addrLine2 || '', country: f.addrCountry || '',
+            state: f.addrState || '', city: f.city || '', county: f.county || '', zip_code: f.zipCode || '',
+            latitude: f.latitude || null, longitude: f.longitude || null } : null,
+          contacts: Array.isArray(c) ? c.map((contact: any, idx: number) => ({ name: contact.name, title: contact.title,
+            telephone_number: contact.phone, email_id: contact.email, extension: contact.extension || null,
+            alt_telephone_no: contact.altPhone || null, is_primary: idx === 0 })) : [],
+          nr_states: Array.isArray(nrs) ? nrs.map((state: any) => ({ state: state.state, license: state.license || null,
+            is_available_in_search: false })) : [],
         });
 
         const iid = created.id;
-
-        if (Array.isArray(c)) {
-          for (const [idx, contact] of c.entries()) {
-            await api.contacts.create(iid, {
-              name: contact.name, title: contact.title,
-              telephone_number: contact.phone, email_id: contact.email, is_primary: idx === 0,
-            }).catch(() => {});
-          }
-        }
-
-        if (Array.isArray(nrs)) {
-          for (const s of nrs) {
-            await api.nrStates.create(iid, { state: s.state, license: s.license || null }).catch(() => {});
-          }
-        }
 
         if (s3) {
           const step3 = JSON.parse(s3);
@@ -140,7 +133,11 @@ export default function ReviewSubmitPage({
               plcl_combined_license: licenseRequirement === 'Combined' ? (pf.combinedLicense || null) : null,
               telephone_number_cc: pf.phoneCC || '1', telephone_number: pf.phone || '0000000000',
               email: pf.email || null, country: pf.country || 'United States',
-            }).catch(() => {});
+              address: pf.addrLine1 ? { address_line1: pf.addrLine1, address_line2: pf.addrLine2 || '', country: pf.addrCountry || '',
+                state: pf.addrState || '', city: pf.city || '', county: pf.county || '', zip_code: pf.zipCode || '',
+                latitude: pf.latitude || null, longitude: pf.longitude || null } : null,
+              nr_states: Array.isArray(pf.nrRows) ? pf.nrRows.map((state: any) => ({ state: state.state, license_number: state.license || null })) : [],
+            });
           }
         }
 
@@ -162,6 +159,9 @@ export default function ReviewSubmitPage({
       ['shift_step1','shift_step2','shift_step3','shift_step4'].forEach(k => sessionStorage.removeItem(k));
     } catch (err) {
       console.error('Submit error:', err);
+      alert('Unable to submit the intermediary. No partial Distribution Management details were saved.');
+      setSubmitting(false);
+      return;
     }
     setTimeout(onSubmit, 700);
   }

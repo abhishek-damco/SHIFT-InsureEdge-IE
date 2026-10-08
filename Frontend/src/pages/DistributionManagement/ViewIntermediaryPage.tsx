@@ -16,6 +16,7 @@ import {
 } from './IntermediaryReferenceData';
 import { SPECIALTY_INSURANCE_TYPE } from './ProductReferenceData';
 import ProducerLicenseInput, { validateProducerLicense } from './ProducerLicenseInput';
+import { IntermediaryAddressFields } from './IntermediaryAddressFields';
 
 interface ViewIntermediaryPageProps {
   record: IntermediaryRecord;
@@ -107,6 +108,7 @@ function DetailsTab({ record, onRecordChange }: {
 
   const [editAddr, setEditAddr] = useState(false);
   const [addrForm, setAddrForm] = useState<any>({});
+  const [addrErrors, setAddrErrors] = useState<Record<string, string>>({});
   const addrFormRef = useRef<any>({});
 
   const [editContact, setEditContact] = useState(false);
@@ -141,7 +143,7 @@ function DetailsTab({ record, onRecordChange }: {
       };
       setPrimForm(form);
       primFormRef.current = form;
-    }).catch(() => {});
+    }).catch((error: any) => { console.error('Failed to load intermediary details.', error); });
 
     api.contacts.list(iid).then((rows: any[]) => {
       const mapped = rows
@@ -158,11 +160,11 @@ function DetailsTab({ record, onRecordChange }: {
         }));
       setContacts(mapped);
       contactsRef.current = mapped;
-    }).catch(() => {});
+    }).catch((error: any) => { if (error?.response?.status !== 404) console.error('Failed to load intermediary contacts.', error); });
 
     api.nrStates.list(iid).then((rows: any[]) => {
       setNrStates(rows.map((nr: any) => ({ id: nr.id, state: nr.state ?? '', license: nr.license ?? '' })));
-    }).catch(() => {});
+    }).catch((error: any) => { if (error?.response?.status !== 404) console.error('Failed to load intermediary NR states.', error); });
 
     api.address.get(iid).then((addr: any) => {
       if (!addr) return;
@@ -180,7 +182,7 @@ function DetailsTab({ record, onRecordChange }: {
       };
       setAddrForm(form);
       addrFormRef.current = form;
-    }).catch(() => {});
+    }).catch((error: any) => { if (error?.response?.status !== 404) console.error('Failed to load intermediary address.', error); });
   }, [record.id]);
 
   async function savePrimary() {
@@ -214,6 +216,13 @@ function DetailsTab({ record, onRecordChange }: {
 
   async function saveAddr() {
     const iid = record.id as number;
+    const requiredAddressFields = ['addrLine1', 'addrCountry', 'addrState', 'city', 'county', 'zipCode'] as const;
+    const nextErrors = requiredAddressFields.reduce<Record<string, string>>((errors, field) => {
+      if (!String(addrForm[field] ?? '').trim()) errors[field] = 'This field is required.';
+      return errors;
+    }, {});
+    setAddrErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
     const payload = {
       address_line1: addrForm.addrLine1,
       address_line2: addrForm.addrLine2,
@@ -271,6 +280,16 @@ function DetailsTab({ record, onRecordChange }: {
     }
   }
   function cancelContacts() { setContacts([...contactsRef.current]); setEditContact(false); }
+
+  function startEditContacts() {
+    // Existing records retain their loaded values. A new draft is needed only
+    // when this intermediary has never had a contact persisted.
+    setContacts(current => current.length > 0 ? current : [{
+      id: `contact-${Date.now()}`, name: '', title: '', email: '', phone: '',
+      altPhone: '', extension: '', isPrimary: true,
+    }]);
+    setEditContact(true);
+  }
 
   async function addNrState() {
     if (!nrNewState) return;
@@ -561,7 +580,7 @@ function DetailsTab({ record, onRecordChange }: {
               <span className="vi-card__title">Home Office / Legal Address</span>
               <div className="vi-card__hdr-actions">
                 {!editAddr && (
-                  <button className="vi-icon-btn" title="Edit" onClick={() => { setAddrForm({ ...addrFormRef.current }); setEditAddr(true); }}>
+                  <button className="vi-icon-btn" title="Edit" onClick={() => { setAddrForm({ ...addrFormRef.current }); setAddrErrors({}); setEditAddr(true); }}>
                     <PencilIcon />
                   </button>
                 )}
@@ -608,15 +627,19 @@ function DetailsTab({ record, onRecordChange }: {
                   </div>
                 </div>
               ) : (
-                <div className="vi-field-grid">
-                  <div className="vi-field" style={{ gridColumn: '1 / -1' }}>
-                    <span className="vi-label">Address Line 1</span>
-                    <input className="vi-input" value={addrForm.addrLine1 || ''} onChange={e => fa('addrLine1')(e.target.value)} />
-                  </div>
-                  <div className="vi-field" style={{ gridColumn: '1 / -1' }}>
-                    <span className="vi-label">Address Line 2</span>
-                    <input className="vi-input" value={addrForm.addrLine2 || ''} onChange={e => fa('addrLine2')(e.target.value)} />
-                  </div>
+                <div className="card distribution-form-card">
+                  <IntermediaryAddressFields
+                    value={{ googleSearch: addrForm.googleSearch || '', enterManually: addrForm.enterManually ?? false,
+                      addrLine1: addrForm.addrLine1 || '', addrLine2: addrForm.addrLine2 || '', addrCountry: addrForm.addrCountry || '',
+                      addrState: addrForm.addrState || '', city: addrForm.city || '', county: addrForm.county || '', zipCode: addrForm.zipCode || '',
+                      latitude: addrForm.latitude || '', longitude: addrForm.longitude || '' }}
+                    errors={addrErrors}
+                    onChange={(field, nextValue) => {
+                      setAddrForm((previous: any) => ({ ...previous, [field]: nextValue }));
+                      setAddrErrors(previous => ({ ...previous, [field]: '' }));
+                    }}
+                  />
+                  {false && <>
                   <div className="vi-field">
                     <span className="vi-label">Country</span>
                     <SearchableSelect
@@ -654,6 +677,7 @@ function DetailsTab({ record, onRecordChange }: {
                     <span className="vi-label">Longitude</span>
                     <input className="vi-input" value={addrForm.longitude || ''} onChange={e => fa('longitude')(e.target.value)} />
                   </div>
+                  </>}
                   <div className="vi-edit-actions" style={{ gridColumn: '1 / -1' }}>
                     <button className="vi-btn-cancel" onClick={cancelAddr}>Cancel</button>
                     <button className="vi-btn-save"   onClick={saveAddr}>Save</button>
@@ -669,7 +693,7 @@ function DetailsTab({ record, onRecordChange }: {
               <span className="vi-card__title">Contact Details</span>
               <div className="vi-card__hdr-actions">
                 {!editContact && (
-                  <button className="vi-icon-btn" title="Edit" onClick={() => setEditContact(true)}>
+                  <button className="vi-icon-btn" title="Edit" onClick={startEditContacts}>
                     <PencilIcon />
                   </button>
                 )}
@@ -1063,6 +1087,7 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
   const [editTarget,      setEditTarget]      = useState<any | null>(null);
   const [deleteTarget,    setDeleteTarget]    = useState<any | null>(null);
   const [form, setForm] = useState({ ...EMPTY_PROD_FORM });
+  const [productErrors, setProductErrors] = useState<Record<string, string>>({});
   const insurTypes = includeLegacyValue([SPECIALTY_INSURANCE_TYPE], form.insuranceType);
   const availableLobs = lobs
     .filter((product: any) => product.product_type === form.insuranceType || Number(product.id) === Number(form.lineOfBusinessId))
@@ -1115,6 +1140,7 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
   function openAdd() {
     setEditTarget(null);
     setForm({ ...EMPTY_PROD_FORM });
+    setProductErrors({});
     setShowModal(true);
   }
 
@@ -1129,10 +1155,24 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
       renewalPct:       String(row.renewalPct     ?? ''),
       effectiveDate:    row.effectiveDate    ?? '',
     });
+    setProductErrors({});
     setShowModal(true);
   }
 
   async function saveProduct() {
+    const errors: Record<string, string> = {};
+    if (!form.insuranceType || form.insuranceType.trim().toLowerCase().startsWith('select')) errors.insuranceType = 'Provide Insurance Type to continue';
+    if (form.lineOfBusinessId === '' || Number(form.lineOfBusinessId) <= 0) errors.lineOfBusinessId = 'Provide Line of Business to continue';
+    if (form.subProductId === '' || Number(form.subProductId) <= 0) errors.subProductId = 'Provide Sub-Product to continue';
+    if (!form.state || form.state.trim().toLowerCase().startsWith('select')) errors.state = 'Provide State to continue';
+    if (form.newBusinessPct === '') errors.newBusinessPct = 'Provide New Business Commission to continue';
+    if (form.renewalPct === '') errors.renewalPct = 'Provide Renewal Commission to continue';
+    if (!form.effectiveDate) errors.effectiveDate = 'Provide Effective Date to continue';
+    if (Object.keys(errors).length > 0) {
+      setProductErrors(errors);
+      return;
+    }
+
     const iid = record.id as number;
     const payload = {
       company_id:              1,
@@ -1173,7 +1213,7 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
       }
       setShowModal(false);
     } catch (e: any) {
-      alert(e.message ?? 'Failed to save product');
+      alert(e.response?.data?.error ?? e.message ?? 'Failed to save product');
     }
   }
 
@@ -1300,61 +1340,68 @@ function ProductsTab({ record, onRecordChange: _onRecordChange }: {
             <div className="vi-modal__body">
               <div className="vi-form-row">
                 <div className="vi-form-field">
-                  <span className="vi-form-label">Insurance Type</span>
-                  <select className="vi-select" value={form.insuranceType}
-                    onChange={e => ff('insuranceType')(e.target.value)}>
+                  <span className="vi-form-label"><span className="req">*</span> Insurance Type</span>
+                  <select className={`vi-select${productErrors.insuranceType ? ' vi-input--err' : ''}`} value={form.insuranceType}
+                    onChange={e => { ff('insuranceType')(e.target.value); setProductErrors(p => ({ ...p, insuranceType: '', lineOfBusinessId: '', subProductId: '' })); }}>
                     <option value="">Select…</option>
                     {insurTypes.map(t => <option key={t}>{t}</option>)}
                   </select>
+                  <FieldError message={productErrors.insuranceType} />
                 </div>
                 <div className="vi-form-field">
-                  <span className="vi-form-label">Line of Business</span>
-                  <select className="vi-select" value={form.lineOfBusinessId}
-                    onChange={e => ff('lineOfBusinessId')(e.target.value)}>
+                  <span className="vi-form-label"><span className="req">*</span> Line of Business</span>
+                  <select className={`vi-select${productErrors.lineOfBusinessId ? ' vi-input--err' : ''}`} value={form.lineOfBusinessId}
+                    onChange={e => { ff('lineOfBusinessId')(e.target.value); setProductErrors(p => ({ ...p, lineOfBusinessId: '', subProductId: '' })); }}>
                     <option value="">Select…</option>
                     {availableLobs.map(l => <option key={l.id} value={l.id}>{l.product_name}</option>)}
                   </select>
+                  <FieldError message={productErrors.lineOfBusinessId} />
                 </div>
               </div>
               <div className="vi-form-row">
                 <div className="vi-form-field">
-                  <span className="vi-form-label">Sub-Product</span>
-                  <select className="vi-select" value={form.subProductId}
-                    onChange={e => ff('subProductId')(e.target.value)}>
+                  <span className="vi-form-label"><span className="req">*</span> Sub-Product</span>
+                  <select className={`vi-select${productErrors.subProductId ? ' vi-input--err' : ''}`} value={form.subProductId}
+                    onChange={e => { ff('subProductId')(e.target.value); setProductErrors(p => ({ ...p, subProductId: '' })); }}>
                     <option value="">Select…</option>
                     {availableSubProducts.map(s => <option key={s.id} value={s.id}>{s.product_name}</option>)}
                   </select>
+                  <FieldError message={productErrors.subProductId} />
                 </div>
                 <div className="vi-form-field">
-                  <span className="vi-form-label">State</span>
-                  <select className="vi-select" value={form.state}
-                    onChange={e => ff('state')(e.target.value)}>
+                  <span className="vi-form-label"><span className="req">*</span> State</span>
+                  <select className={`vi-select${productErrors.state ? ' vi-input--err' : ''}`} value={form.state}
+                    onChange={e => { ff('state')(e.target.value); setProductErrors(p => ({ ...p, state: '' })); }}>
                     <option value="">Select…</option>
                     {US_STATES.map(s => <option key={s}>{s}</option>)}
                   </select>
+                  <FieldError message={productErrors.state} />
                 </div>
               </div>
               <div className="vi-form-row">
                 <div className="vi-form-field">
-                  <span className="vi-form-label">New Business Commission %</span>
-                  <input className="vi-input" type="number" min="0" max="100"
+                  <span className="vi-form-label"><span className="req">*</span> New Business Commission %</span>
+                  <input className={`vi-input${productErrors.newBusinessPct ? ' vi-input--err' : ''}`} type="number" min="0" max="100"
                     value={form.newBusinessPct}
-                    onChange={e => ff('newBusinessPct')(e.target.value)}
+                    onChange={e => { ff('newBusinessPct')(e.target.value); setProductErrors(p => ({ ...p, newBusinessPct: '' })); }}
                     placeholder="e.g. 15" />
+                  <FieldError message={productErrors.newBusinessPct} />
                 </div>
                 <div className="vi-form-field">
-                  <span className="vi-form-label">Renewal Commission %</span>
-                  <input className="vi-input" type="number" min="0" max="100"
+                  <span className="vi-form-label"><span className="req">*</span> Renewal Commission %</span>
+                  <input className={`vi-input${productErrors.renewalPct ? ' vi-input--err' : ''}`} type="number" min="0" max="100"
                     value={form.renewalPct}
-                    onChange={e => ff('renewalPct')(e.target.value)}
+                    onChange={e => { ff('renewalPct')(e.target.value); setProductErrors(p => ({ ...p, renewalPct: '' })); }}
                     placeholder="e.g. 20" />
+                  <FieldError message={productErrors.renewalPct} />
                 </div>
               </div>
               <div className="vi-form-row vi-form-row--1">
                 <div className="vi-form-field">
-                  <span className="vi-form-label">Effective Date</span>
-                  <input className="vi-input" type="date" value={form.effectiveDate}
-                    onChange={e => ff('effectiveDate')(e.target.value)} />
+                  <span className="vi-form-label"><span className="req">*</span> Effective Date</span>
+                  <input className={`vi-input${productErrors.effectiveDate ? ' vi-input--err' : ''}`} type="date" value={form.effectiveDate}
+                    onChange={e => { ff('effectiveDate')(e.target.value); setProductErrors(p => ({ ...p, effectiveDate: '' })); }} />
+                  <FieldError message={productErrors.effectiveDate} />
                 </div>
               </div>
             </div>
@@ -1440,13 +1487,13 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
       if (cancelled) return;
       if (addr.status === 'fulfilled') {
         const row = addr.value ?? {};
-        setAddress({ addrLine1: row.address_line1 ?? '', addrLine2: row.address_line2 ?? '',
+        setAddress({ _addressId: row.id, addrLine1: row.address_line1 ?? '', addrLine2: row.address_line2 ?? '',
           addrCountry: row.country ?? '', addrState: row.state ?? '', city: row.city ?? '',
           county: row.county ?? '', zipCode: row.zip_code ?? '', latitude: row.latitude ?? '', longitude: row.longitude ?? '' });
         setAddressError('');
-      } else setAddressError('Office address could not be loaded.');
+      } else if ((addr.reason as any)?.response?.status !== 404) setAddressError('Office address could not be loaded.');
       if (nr.status === 'fulfilled') { setStates(nr.value); setStatesError(''); }
-      else setStatesError('Non-resident states could not be loaded.');
+      else if ((nr.reason as any)?.response?.status !== 404) setStatesError('Non-resident states could not be loaded.');
       setLoadingDetails(false);
     });
     return () => { cancelled = true; };
@@ -1465,13 +1512,16 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
   async function saveAddress() {
     setSavingAddress(true);
     try {
-      await api.producerAddress.create(Number(producer.id), {
+      const payload = {
         address_line1: addrForm.addrLine1, address_line2: addrForm.addrLine2,
         country: addrForm.addrCountry, state: addrForm.addrState, city: addrForm.city,
         county: addrForm.county, zip_code: addrForm.zipCode,
         latitude: addrForm.latitude || null, longitude: addrForm.longitude || null,
-      });
-      setAddress({ addrLine1: addrForm.addrLine1, addrLine2: addrForm.addrLine2,
+      };
+      const saved = address._addressId
+        ? await api.producerAddress.update(Number(producer.id), address._addressId, payload)
+        : await api.producerAddress.create(Number(producer.id), payload);
+      setAddress({ _addressId: saved.id, addrLine1: addrForm.addrLine1, addrLine2: addrForm.addrLine2,
         addrCountry: addrForm.addrCountry, addrState: addrForm.addrState, city: addrForm.city,
         county: addrForm.county, zipCode: addrForm.zipCode, latitude: addrForm.latitude, longitude: addrForm.longitude }); setAddressError(''); setEditAddr(false);
     } catch { setAddressError('Office address could not be saved. Please try again.'); }
@@ -1696,7 +1746,7 @@ function ProducerCard({ producer, allProducers, onUpdate }: {
 
             <div className="vi-card__hdr vi-producer-address-heading"><span className="vi-card__title">Office Address</span>
               {!editAddr && (
-                <button className="vi-icon-btn" aria-label="Edit office address" onClick={e => { e.stopPropagation(); setAddrForm({ ...f }); setEditAddr(true); }}>
+                <button className="vi-icon-btn" aria-label="Edit office address" onClick={e => { e.stopPropagation(); setAddrForm({ ...f, googleSearch: '', enterManually: false }); setEditAddr(true); }}>
                   <Pencil size={14} strokeWidth={1.4} />
                 </button>
               )}
@@ -1978,4 +2028,3 @@ export default function ViewIntermediaryPage({ record: initialRecord, onBack }: 
     </>
   );
 }
-

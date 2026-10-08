@@ -19,6 +19,13 @@ namespace InsureEdge.API.Controllers;
 [Route("api/distribution")]
 public class DistributionController : ControllerBase
 {
+    private static readonly HashSet<string> UsStateCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+        "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+        "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT",
+        "VA", "WA", "WV", "WI", "WY"
+    };
     private readonly InsureEdgeDbContext _db;
     private readonly ICurrentTenantService _tenant;
     private readonly ProducerDraftIds _draftIds;
@@ -66,9 +73,27 @@ public class DistributionController : ControllerBase
             IntermediaryCode = NextCode("IM", usedCodes),
         };
 
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         ApplyIntermediary(intermediary, request);
         _db.Intermediaries.Add(intermediary);
         await _db.SaveChangesAsync();
+        if (request.Address != null)
+        {
+            var address = new IntermediaryAddress { ClientId = clientId, IntermediaryId = intermediary.Id, CreatedBy = _tenant.UserId };
+            ApplyAddress(address, request.Address); _db.IntermediaryAddresses.Add(address);
+        }
+        foreach (var contactRequest in request.Contacts ?? [])
+        {
+            var contact = new IntermediaryContact { ClientId = clientId, IntermediaryId = intermediary.Id, CreatedBy = _tenant.UserId };
+            ApplyContact(contact, contactRequest); _db.IntermediaryContacts.Add(contact);
+        }
+        foreach (var stateRequest in request.NrStates ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(stateRequest.State)) return BadRequest(new { error = "Non-resident state is required." });
+            _db.IntermediaryNrStates.Add(new IntermediaryNrState { ClientId = clientId, IntermediaryId = intermediary.Id, State = stateRequest.State.Trim(), License = stateRequest.License, IsAvailableInSearch = stateRequest.IsAvailableInSearch, CreatedBy = _tenant.UserId });
+        }
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return Ok(ToIntermediaryResponse(intermediary));
     }
@@ -173,6 +198,7 @@ public class DistributionController : ControllerBase
             ProducerCode = reservation is null ? NextCode("PR", usedCodes) : ProducerDraftIds.FormatCode(reservation.Id),
         };
 
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         ApplyProducer(producer, request);
         _db.Producers.Add(producer);
         try { await _db.SaveChangesAsync(); }
@@ -184,6 +210,19 @@ public class DistributionController : ControllerBase
                 return Ok(ToProducerResponse(existing));
             return Conflict(new { error = "The reserved producer ID is already in use." });
         }
+
+        if (request.Address != null)
+        {
+            var address = new ProducerAddress { ClientId = clientId, ProducerId = producer.Id, CreatedBy = _tenant.UserId };
+            ApplyAddress(address, request.Address); _db.ProducerAddresses.Add(address);
+        }
+        foreach (var stateRequest in request.NrStates ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(stateRequest.State)) return BadRequest(new { error = "Non-resident state is required." });
+            _db.ProducerNrStates.Add(new ProducerNrState { ClientId = clientId, ProducerId = producer.Id, State = stateRequest.State.Trim(), LicenseNumber = stateRequest.LicenseNumber, IsAvailableInSearch = stateRequest.IsAvailableInSearch, CreatedBy = _tenant.UserId });
+        }
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return Ok(ToProducerResponse(producer));
     }
@@ -268,6 +307,66 @@ public class DistributionController : ControllerBase
         return Ok(products);
     }
 
+    [HttpGet("intermediaries/{intermediaryId:long}/commissions")]
+    public async Task<IActionResult> GetCommissions(long intermediaryId)
+    {
+        if (await FindIntermediary(intermediaryId) == null) return NotFound();
+        await EnsureIntermediaryCommissionStorageAsync();
+        var rows = await _db.IntermediaryCommissions.AsNoTracking()
+            .Where(c => c.ClientId == _tenant.ClientId && c.IntermediaryId == intermediaryId)
+            .OrderBy(c => c.EffectiveDate)
+            .ToListAsync();
+        return Ok(rows.Select(ToCommissionResponse));
+    }
+
+    [HttpPost("intermediaries/{intermediaryId:long}/commissions")]
+    public async Task<IActionResult> CreateCommission(long intermediaryId, [FromBody] UpsertIntermediaryCommissionRequest request)
+    {
+        if (await FindIntermediary(intermediaryId) == null) return NotFound();
+        await EnsureIntermediaryCommissionStorageAsync();
+        var error = await ValidateCommissionRequest(request);
+        if (error != null) return BadRequest(new { error });
+
+        var commission = new IntermediaryCommission
+        {
+            ClientId = _tenant.ClientId,
+            IntermediaryId = intermediaryId,
+            CreatedBy = _tenant.UserId,
+            CreatedOn = DateTime.UtcNow,
+        };
+        ApplyCommission(commission, request);
+        _db.IntermediaryCommissions.Add(commission);
+        await _db.SaveChangesAsync();
+        return Ok(ToCommissionResponse(commission));
+    }
+
+    [HttpPut("intermediaries/{intermediaryId:long}/commissions/{id:long}")]
+    public async Task<IActionResult> UpdateCommission(long intermediaryId, long id, [FromBody] UpsertIntermediaryCommissionRequest request)
+    {
+        await EnsureIntermediaryCommissionStorageAsync();
+        var commission = await _db.IntermediaryCommissions.FirstOrDefaultAsync(c => c.Id == id && c.ClientId == _tenant.ClientId && c.IntermediaryId == intermediaryId);
+        if (commission == null) return NotFound();
+        var error = await ValidateCommissionRequest(request);
+        if (error != null) return BadRequest(new { error });
+
+        ApplyCommission(commission, request);
+        commission.UpdatedBy = _tenant.UserId;
+        commission.UpdatedOn = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(ToCommissionResponse(commission));
+    }
+
+    [HttpDelete("intermediaries/{intermediaryId:long}/commissions/{id:long}")]
+    public async Task<IActionResult> DeleteCommission(long intermediaryId, long id)
+    {
+        await EnsureIntermediaryCommissionStorageAsync();
+        var commission = await _db.IntermediaryCommissions.FirstOrDefaultAsync(c => c.Id == id && c.ClientId == _tenant.ClientId && c.IntermediaryId == intermediaryId);
+        if (commission == null) return NotFound();
+        _db.IntermediaryCommissions.Remove(commission);
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
     private Task<Intermediary?> FindIntermediary(long id)
     {
         var clientId = _tenant.ClientId;
@@ -279,6 +378,73 @@ public class DistributionController : ControllerBase
         var clientId = _tenant.ClientId;
         return _db.Producers.FirstOrDefaultAsync(p => p.Id == id && p.ClientId == clientId);
     }
+
+    // Existing local installations predate EF migration history. The checked-in
+    // migration is the deployment path; this idempotent guard keeps those legacy
+    // databases usable until their migration history is brought under management.
+    private Task EnsureIntermediaryCommissionStorageAsync() => _db.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS intermediary_commission (
+            id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            client_id bigint NOT NULL,
+            intermediary_id bigint NOT NULL REFERENCES intermediary(id) ON DELETE CASCADE,
+            company_id bigint NOT NULL,
+            product_id bigint NOT NULL REFERENCES insurance_product(id) ON DELETE RESTRICT,
+            sub_product_id bigint NOT NULL REFERENCES insurance_sub_product(id) ON DELETE RESTRICT,
+            insurance_type character varying(50) NOT NULL,
+            juridiction_state character varying(2) NOT NULL,
+            effective_date date NOT NULL,
+            new_business_commission numeric(5,2) NOT NULL,
+            renewal_commission numeric(5,2) NOT NULL,
+            created_by bigint NULL,
+            created_on timestamp without time zone NOT NULL,
+            updated_by bigint NULL,
+            updated_on timestamp without time zone NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_intermediary_commission_client_id_intermediary_id
+            ON intermediary_commission (client_id, intermediary_id);
+        """);
+
+    private async Task<string?> ValidateCommissionRequest(UpsertIntermediaryCommissionRequest request)
+    {
+        if (IsPlaceholder(request.InsuranceType)) return "Insurance Type is required.";
+        if (!request.ProductId.HasValue || request.ProductId <= 0) return "Line of Business is required.";
+        if (!request.SubProductId.HasValue || request.SubProductId <= 0) return "Sub-Product is required.";
+        if (IsPlaceholder(request.JuridictionState) || !UsStateCodes.Contains(request.JuridictionState!)) return "State is required.";
+        if (!request.NewBusinessCommission.HasValue) return "New Business Commission is required.";
+        if (!request.RenewalCommission.HasValue) return "Renewal Commission is required.";
+        if (!request.EffectiveDate.HasValue) return "Effective Date is required.";
+        if (request.NewBusinessCommission is < 0 or > 100 || request.RenewalCommission is < 0 or > 100)
+            return "Commission percentages must be between 0 and 100.";
+
+        var product = await _db.InsuranceProducts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProductId && p.IsActive);
+        if (product == null || !string.Equals(NormalizeInsuranceType(product.Category), request.InsuranceType!.Trim(), StringComparison.OrdinalIgnoreCase))
+            return "Line of Business is invalid for the selected Insurance Type.";
+        var subProductMatches = await _db.InsuranceSubProducts.AsNoTracking()
+            .AnyAsync(s => s.Id == request.SubProductId && s.ProductId == request.ProductId);
+        return subProductMatches ? null : "Sub-Product is invalid for the selected Line of Business.";
+    }
+
+    private static bool IsPlaceholder(string? value) => string.IsNullOrWhiteSpace(value) || value.Trim().StartsWith("select", StringComparison.OrdinalIgnoreCase);
+    private static string NormalizeInsuranceType(string category) => category == "Specialty" ? "Specialty Lines" : category;
+
+    private static void ApplyCommission(IntermediaryCommission commission, UpsertIntermediaryCommissionRequest request)
+    {
+        commission.CompanyId = request.CompanyId.GetValueOrDefault(1);
+        commission.ProductId = request.ProductId!.Value;
+        commission.SubProductId = request.SubProductId!.Value;
+        commission.InsuranceType = request.InsuranceType!.Trim();
+        commission.JuridictionState = request.JuridictionState!.Trim().ToUpperInvariant();
+        commission.EffectiveDate = request.EffectiveDate!.Value;
+        commission.NewBusinessCommission = request.NewBusinessCommission!.Value;
+        commission.RenewalCommission = request.RenewalCommission!.Value;
+    }
+
+    private static object ToCommissionResponse(IntermediaryCommission c) => new
+    {
+        id = c.Id, company_id = c.CompanyId, product_id = c.ProductId, sub_product_id = c.SubProductId,
+        insurance_type = c.InsuranceType, juridiction_state = c.JuridictionState, effective_date = c.EffectiveDate,
+        new_business_commission = c.NewBusinessCommission, renewal_commission = c.RenewalCommission,
+    };
 
     private static void ApplyIntermediary(Intermediary intermediary, UpsertIntermediaryRequest request)
     {
@@ -321,6 +487,25 @@ public class DistributionController : ControllerBase
         producer.Suffix = TrimTo(request.Suffix, 4);
         producer.Gender = TrimTo(request.Gender, 50);
         producer.PersonalBio = TrimTo(request.PersonalBio, 1000);
+    }
+
+    private static void ApplyAddress(IntermediaryAddress address, AddressRequest request)
+    {
+        address.AddressLine1 = request.AddressLine1; address.AddressLine2 = request.AddressLine2; address.Country = request.Country;
+        address.State = request.State; address.City = request.City; address.County = request.County; address.ZipCode = request.ZipCode;
+        address.Latitude = request.Latitude; address.Longitude = request.Longitude;
+    }
+    private static void ApplyAddress(ProducerAddress address, AddressRequest request)
+    {
+        address.AddressLine1 = request.AddressLine1; address.AddressLine2 = request.AddressLine2; address.Country = request.Country;
+        address.State = request.State; address.City = request.City; address.County = request.County; address.ZipCode = request.ZipCode;
+        address.Latitude = request.Latitude; address.Longitude = request.Longitude;
+    }
+    private static void ApplyContact(IntermediaryContact contact, ContactRequest request)
+    {
+        contact.Name = request.Name; contact.Title = request.Title; contact.EmailId = request.EmailId;
+        contact.TelephoneNumber = request.TelephoneNumber; contact.Extension = request.Extension;
+        contact.AltTelephoneNo = request.AltTelephoneNo; contact.IsPrimary = request.IsPrimary;
     }
 
     private static object ToIntermediaryResponse(Intermediary i) => new
@@ -413,6 +598,9 @@ public sealed class UpsertIntermediaryRequest
     [JsonPropertyName("allow_full_producer_visibility")] public bool? AllowFullProducerVisibility { get; init; }
     [JsonPropertyName("last_step")] public int? LastStep { get; init; }
     [JsonPropertyName("commission_disburse_email")] public string? CommissionDisburseEmail { get; init; }
+    [JsonPropertyName("address")] public AddressRequest? Address { get; init; }
+    [JsonPropertyName("contacts")] public List<ContactRequest>? Contacts { get; init; }
+    [JsonPropertyName("nr_states")] public List<IntermediaryNrStateRequest>? NrStates { get; init; }
 }
 
 public sealed class UpsertProducerRequest
@@ -441,6 +629,8 @@ public sealed class UpsertProducerRequest
     [JsonPropertyName("suffix")] public string? Suffix { get; init; }
     [JsonPropertyName("gender")] public string? Gender { get; init; }
     [JsonPropertyName("personal_bio")] public string? PersonalBio { get; init; }
+    [JsonPropertyName("address")] public AddressRequest? Address { get; init; }
+    [JsonPropertyName("nr_states")] public List<ProducerNrStateRequest>? NrStates { get; init; }
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; init; }
 
     public string? ExtraString(string key)
@@ -452,4 +642,16 @@ public sealed class UpsertProducerRequest
 
     public string? ResolvedPcLicenseRequirement() =>
         PcLicenseRequirement ?? ExtraString("pc_license_requirement") ?? ExtraString("pcLicenseRequirement");
+}
+
+public sealed class UpsertIntermediaryCommissionRequest
+{
+    [JsonPropertyName("company_id")] public long? CompanyId { get; init; }
+    [JsonPropertyName("product_id")] public long? ProductId { get; init; }
+    [JsonPropertyName("sub_product_id")] public long? SubProductId { get; init; }
+    [JsonPropertyName("insurance_type")] public string? InsuranceType { get; init; }
+    [JsonPropertyName("juridiction_state")] public string? JuridictionState { get; init; }
+    [JsonPropertyName("effective_date")] public DateOnly? EffectiveDate { get; init; }
+    [JsonPropertyName("new_business_commission")] public decimal? NewBusinessCommission { get; init; }
+    [JsonPropertyName("renewal_commission")] public decimal? RenewalCommission { get; init; }
 }

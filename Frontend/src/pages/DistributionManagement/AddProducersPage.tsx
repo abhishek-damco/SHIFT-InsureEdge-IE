@@ -4,6 +4,7 @@ import BulkUploadModal from './BulkUploadModal';
 import { includeLegacyValue, jurisdictionOptions } from './IntermediaryReferenceData';
 import './ProducerCreation.css';
 import ProducerLicenseInput, { validateProducerLicense } from './ProducerLicenseInput';
+import { IntermediaryAddressFields } from './IntermediaryAddressFields';
 
 const WIZARD_STEPS = [
   { n: 1, l1: 'Add',    l2: 'Intermediary Details' },
@@ -292,15 +293,12 @@ function ProducerCard({
             <label className="pc-field"><span><span className="req">* </span>Email ID</span><input className="fi" type="email" value={form.email} onChange={event => sf('email', event.target.value)} /><Err msg={errors.email} /></label>
           </div>
           <div className="pc-address-header"><h2>Office Address</h2><label><input type="checkbox" disabled={copyingAddress} checked={!!form.sameAsIntermediary} onChange={event => void copyIntermediaryAddress(event.target.checked)} />Same as Intermediary Location</label></div>
-          {inputField('googleSearch', 'Google Address Search', false, !!form.sameAsIntermediary)}
-          <label className="pc-manual"><input type="checkbox" checked={!!form.enterManually} disabled={form.sameAsIntermediary} onChange={event => sf('enterManually', event.target.checked)} />Enter Address Manually</label>
-          <div className="pc-grid pc-address-grid">
-            <div className="pc-address-line">{inputField('addrLine1', 'Address Line 1', true, manualDisabled)}</div><div className="pc-address-line">{inputField('addrLine2', 'Address Line 2', false, manualDisabled)}</div>
-            <label className="pc-field"><span><span className="req">* </span>Country</span><ClearSelect disabled={manualDisabled} value={form.addrCountry || 'United States'} options={countryOpts} onChange={value => onUpdate(id, { addrCountry: value, addrState: '' })} /></label>
-            <label className="pc-field"><span><span className="req">* </span>State</span><ClearSelect disabled={manualDisabled} value={form.addrState || ''} options={includeLegacyValue(jurisdictionOptions(form.addrCountry || 'United States'), form.addrState || '')} onChange={value => sf('addrState', value)} /></label>
-            {inputField('city', 'City', true, manualDisabled)}{inputField('county', 'County', true, manualDisabled)}{inputField('zipCode', 'Zip Code', true, manualDisabled)}<span />
-            {inputField('latitude', 'Latitude', false, manualDisabled)}{inputField('longitude', 'Longitude', false, manualDisabled)}
-          </div>
+          <IntermediaryAddressFields
+            value={{ googleSearch: form.googleSearch || '', enterManually: !!form.enterManually, addrLine1: form.addrLine1 || '', addrLine2: form.addrLine2 || '', addrCountry: form.addrCountry || 'United States', addrState: form.addrState || '', city: form.city || '', county: form.county || '', zipCode: form.zipCode || '', latitude: form.latitude || '', longitude: form.longitude || '' }}
+            errors={errors}
+            disabled={!!form.sameAsIntermediary}
+            onChange={(field, value) => onUpdate(id, { [field]: value })}
+          />
           {detailError && <p className="ferr" role="alert">{detailError}</p>}
         </section>
       </fieldset>
@@ -553,19 +551,12 @@ export async function createStandaloneProducer(intermediaryId: number, form: Pro
     alt_telephone_number: form.altPhone || null, extension: form.ext ? Number(form.ext) : null,
     email: form.email, is_manager: form.isManager ?? false,
     manager_id: !form.isManager && form.reportsTo ? Number(form.reportsTo) : null, os_user_id,
+    address: form.addrLine1 ? { address_line1: form.addrLine1, address_line2: form.addrLine2 || '',
+      country: form.addrCountry || 'United States', state: form.addrState || '', city: form.city || '', county: form.county || '',
+      zip_code: form.zipCode || '', latitude: form.latitude || null, longitude: form.longitude || null } : null,
+    nr_states: form.nrRows.map(row => ({ state: row.state, license_number: row.license })),
   });
   const warnings: string[] = [];
-  if (form.addrLine1) {
-    try {
-      await _api.producerAddress.create(created.id, { address_line1: form.addrLine1, address_line2: form.addrLine2 || '',
-        country: form.addrCountry || 'United States', state: form.addrState || '', city: form.city || '', county: form.county || '',
-        zip_code: form.zipCode || '', latitude: form.latitude || null, longitude: form.longitude || null });
-    } catch { warnings.push('Office address was not saved because the address service is unavailable.'); }
-  }
-  for (const row of form.nrRows) {
-    try { await _api.producerNrStates.create(created.id, { state: row.state, license_number: row.license }); }
-    catch { warnings.push('Non-resident state ' + row.state + ' was not saved.'); }
-  }
   if (form.profilePic) warnings.push('The profile picture is a local preview; this API does not support picture uploads.');
   return { created, warnings };
 }

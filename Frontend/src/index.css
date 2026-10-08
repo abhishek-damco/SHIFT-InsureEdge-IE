@@ -1521,6 +1521,7 @@ span.ap-th-lbl { cursor: default; }
   transition: border-color 0.12s;
 }
 .vi-input:focus { outline: none; border-color: #1e3a5f; }
+.vi-input--err { border-color: var(--color-danger, #dc2626) !important; }
 
 .vi-select {
   font-size: 13px;

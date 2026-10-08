@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { distributionApi as api } from '../../api/distribution';
 import SearchableSelect from '../../components/ui/SearchableSelect';
+import { IntermediaryAddressFields } from './IntermediaryAddressFields';
 import IntermediaryTypeSelect from './IntermediaryTypeSelect';
 import {
   INTERMEDIARY_COUNTRIES,
@@ -582,92 +583,7 @@ export default function AddIntermediaryPage({ onBack, onNext }: { onBack: () => 
           {/* ── RIGHT CARD ── */}
           <div className="card distribution-form-card">
             <h2 className="wi-sec-title">Home Office / Legal Address</h2>
-
-            {/* Google search */}
-            <div className="fc fg-mb">
-              <label className="fl-plain">Google Address Search</label>
-              <input className="fi" value={form.googleSearch}
-                onChange={e => sf('googleSearch', e.target.value)} />
-            </div>
-
-            {/* Enter manually checkbox */}
-            <label className="manual-chk">
-              <input type="checkbox" checked={form.enterManually}
-                onChange={e => sf('enterManually', e.target.checked)} />
-              Enter Address Manually
-            </label>
-
-            {/* Address Line 1 + 2 */}
-            <div className="fg2 fg-mb">
-              <div className="fc">
-                <label className="fl"><span className="req">*</span> Address Line 1</label>
-                <input className={`fi${errors.addrLine1 ? ' fi--err' : ''}${!form.enterManually ? ' fi--disabled' : ''}`}
-                  value={form.addrLine1} onChange={e => sf('addrLine1', e.target.value)}
-                  disabled={!form.enterManually} />
-                <Err msg={errors.addrLine1} />
-              </div>
-              <div className="fc">
-                <label className="fl">Address Line 2 <span className="fi-info">ⓘ</span></label>
-                <input className={`fi${!form.enterManually ? ' fi--disabled' : ''}`}
-                  value={form.addrLine2} onChange={e => sf('addrLine2', e.target.value)}
-                  disabled={!form.enterManually} />
-              </div>
-            </div>
-
-            {/* Country + State + City */}
-            <div className="fg3 fg-mb">
-              <div className="fc">
-                <label className="fl"><span className="req">*</span> Country</label>
-                <SearchableSelect
-                  value={form.addrCountry}
-                  onChange={value => setCountry('addrCountry', 'addrState', value)}
-                  options={toSelectOptions(INTERMEDIARY_COUNTRIES, form.addrCountry)}
-                  placeholder="Search..."
-                  clearable
-                />
-                <Err msg={errors.addrCountry} />
-              </div>
-              <div className="fc">
-                <label className="fl"><span className="req">*</span> State</label>
-                <ClearSelect value={form.addrState} onChange={v => sf('addrState', v)}
-                  options={includeLegacyValue(jurisdictionOptions(form.addrCountry), form.addrState)} placeholder="Select..." />
-                <Err msg={errors.addrState} />
-              </div>
-              <div className="fc">
-                <label className="fl"><span className="req">*</span> City</label>
-                <input className={`fi${errors.city ? ' fi--err' : ''}${!form.enterManually ? ' fi--disabled' : ''}`}
-                  value={form.city} onChange={e => sf('city', e.target.value)} disabled={!form.enterManually} />
-                <Err msg={errors.city} />
-              </div>
-            </div>
-
-            {/* County + Zip */}
-            <div className="fg2 fg-mb">
-              <div className="fc">
-                <label className="fl"><span className="req">*</span> County</label>
-                <input className={`fi${errors.county ? ' fi--err' : ''}${!form.enterManually ? ' fi--disabled' : ''}`}
-                  value={form.county} onChange={e => sf('county', e.target.value)} disabled={!form.enterManually} />
-                <Err msg={errors.county} />
-              </div>
-              <div className="fc">
-                <label className="fl"><span className="req">*</span> Zip Code</label>
-                <input className={`fi${errors.zipCode ? ' fi--err' : ''}${!form.enterManually ? ' fi--disabled' : ''}`}
-                  value={form.zipCode} onChange={e => sf('zipCode', e.target.value)} disabled={!form.enterManually} />
-                <Err msg={errors.zipCode} />
-              </div>
-            </div>
-
-            {/* Lat + Lng */}
-            <div className="fg2 fg-mb">
-              <div className="fc">
-                <label className="fl-plain">Latitude</label>
-                <input className="fi fi--ro" value={form.latitude} readOnly />
-              </div>
-              <div className="fc">
-                <label className="fl-plain">Longitude</label>
-                <input className="fi fi--ro" value={form.longitude} readOnly />
-              </div>
-            </div>
+            <IntermediaryAddressFields value={form} errors={errors} onChange={sf} />
 
             {/* Contact Details */}
             <div className="contact-divider" />
