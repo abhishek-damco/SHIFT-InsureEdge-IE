@@ -55,9 +55,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         opts.Cookie.HttpOnly = true;
         opts.Cookie.SameSite = SameSiteMode.Strict;
-        opts.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
-            ? CookieSecurePolicy.None
-            : CookieSecurePolicy.Always;
+        opts.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         opts.Cookie.Name = "insuredge_auth";
         opts.ExpireTimeSpan = TimeSpan.FromHours(8);
         opts.SlidingExpiration = true;

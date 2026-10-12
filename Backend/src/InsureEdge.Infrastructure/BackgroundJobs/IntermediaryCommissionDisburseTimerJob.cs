@@ -86,11 +86,10 @@ public class IntermediaryCommissionDisburseTimerJob
                 Payees: new List<DisbursementPayee>
                 {
                     new(
-                        // TODO: real numeric payee_type_id for "Agency" is unconfirmed — the two
-                        // captured sample responses show 1 and 3 for different (unknown) payee
-                        // types, no mapping table was given. Left null rather than guess wrong;
-                        // DisburseCloud may reject the call until this is set correctly.
-                        Payee_type_id: null,
+                        // Confirmed from the real OutSystems source: payee_type_id is hardcoded
+                        // to 1 for this flow (not derived/looked up) — matches 1 of our 2 real
+                        // captured sample responses.
+                        Payee_type_id: 1,
                         Amount: total,
                         Payee_uuid: Guid.NewGuid().ToString(),
                         Email: i.CommissionDisburseEmail,
