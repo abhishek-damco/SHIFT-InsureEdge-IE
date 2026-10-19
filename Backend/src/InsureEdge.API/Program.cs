@@ -96,6 +96,7 @@ builder.Services.AddScoped<BulkUploadService>();
 builder.Services.AddScoped<InsureEdge.Infrastructure.Services.IntermediaryService>();
 builder.Services.AddScoped<InsureEdge.Infrastructure.Services.ProducerService>();
 builder.Services.AddScoped<InsureEdge.Infrastructure.Services.IntermediaryScreenPermissionService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 // --- Background Jobs (Timer equivalent to OutSystems BPT) ---
 builder.Services.AddScoped<AutoRenewalTimerJob>();

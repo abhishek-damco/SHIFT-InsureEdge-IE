@@ -118,6 +118,7 @@ public class InsureEdgeDbContext : DbContext
     public DbSet<PolicyPaymentTransactionExtended> PolicyPaymentTransactionExtendeds => Set<PolicyPaymentTransactionExtended>();
     public DbSet<CancellationPaymentTransaction> CancellationPaymentTransactions => Set<CancellationPaymentTransaction>();
     public DbSet<Audit> Audits => Set<Audit>();
+    public DbSet<DashboardPreference> DashboardPreferences => Set<DashboardPreference>();
     public DbSet<PolicyConfigurationRequestedBy> PolicyConfigurationRequestedBys => Set<PolicyConfigurationRequestedBy>();
 
     // ── Claim Reference Data ──────────────────────────────────────────────────────────
@@ -1342,6 +1343,16 @@ modelBuilder.Entity<IntermediaryProducerAddress>(e =>
             e.Property(x => x.Module).HasMaxLength(50);
             e.Property(x => x.TableName).HasMaxLength(100);
             e.HasOne(x => x.Transaction).WithMany().HasForeignKey(x => x.TransactionId).IsRequired(false);
+        });
+
+        modelBuilder.Entity<DashboardPreference>(e =>
+        {
+            e.ToTable("dashboard_preference");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ConfigurationJson).IsRequired().HasColumnType("jsonb");
+            e.HasIndex(x => new { x.ClientId, x.UserId }).IsUnique();
+            e.HasOne(x => x.Client).WithMany().HasForeignKey(x => x.ClientId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PolicyConfigurationRequestedBy>(e =>

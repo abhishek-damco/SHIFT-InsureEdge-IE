@@ -42,6 +42,7 @@ import RenewalRegister from './pages/QuotesPolicies/RenewalRegister';
 import PoliciesRegister from './pages/QuotesPolicies/PoliciesRegister';
 import NewSubmission from './pages/QuotesPolicies/NewSubmission';
 import PolicySummaryPage from './pages/PolicySummaryPage';
+import DashboardPage from './pages/DashboardPage';
 
 function FNOLRegPageWithKey() {
   const { id } = useParams<{ id: string }>();
@@ -65,7 +66,8 @@ export default function App() {
             <PermissionProvider>
               <AppShell>
                 <Routes>
-                  <Route path="/" element={<Navigate to="/groups" replace />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/groups" element={<GroupListPage />} />
                   <Route path="/groups/new" element={<AddGroupPage />} />
                   <Route path="/groups/:id" element={<GroupDetailPage />} />

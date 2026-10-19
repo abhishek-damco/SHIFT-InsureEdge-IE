@@ -20,6 +20,18 @@ const claimActions = [
 
 const railIcons = ['grid', 'doc', 'money', 'user', 'group', 'flow', 'list', 'chart', 'building'];
 
+const railLabels: Record<string, string> = {
+  grid: 'Dashboard',
+  doc: 'Quotes & Policies',
+  money: 'Claims',
+  user: 'User Management',
+  group: 'User Groups Management',
+  flow: 'Distribution Management',
+  list: 'Billing Management',
+  chart: 'Report Management',
+  building: 'Client Management',
+};
+
 const moduleNav = [
   { label: 'Dashboard', icon: 'grid', to: '/dashboard' },
   { label: 'Client Management', icon: 'building', to: '/client-management' },
@@ -70,6 +82,7 @@ export default function AppShell({ children }: Props) {
   const isDistribution = location.pathname.startsWith('/distribution');
   const isBilling = location.pathname.startsWith('/billing');
   const isQuotesPolicies = location.pathname.startsWith('/quotes-policies');
+  const isDashboard = location.pathname.startsWith('/dashboard');
   const [moduleMenuOpen, setModuleMenuOpen] = useState(false);
   const [claimsPanelOpen, setClaimsPanelOpen] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -154,10 +167,10 @@ export default function AppShell({ children }: Props) {
       <div style={{ display: 'flex', height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
         <aside style={{ width: 52, background: '#f8fafc', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12, gap: 10 }}>
           {railIcons.map(type => {
-            const target = type === 'money' ? '/claims' : type === 'group' ? '/groups' : type === 'building' ? '/client-management' : type === 'user' ? '/users' : type === 'flow' ? '/distribution' : type === 'list' ? '/billing' : type === 'doc' ? '/quotes-policies/individual/nb-quotes' : undefined;
+            const target = type === 'grid' ? '/dashboard' : type === 'money' ? '/claims' : type === 'group' ? '/groups' : type === 'building' ? '/client-management' : type === 'user' ? '/users' : type === 'flow' ? '/distribution' : type === 'list' ? '/billing' : type === 'doc' ? '/quotes-policies/individual/nb-quotes' : undefined;
             const isUsers = location.pathname.startsWith('/users');
-            const active = (isClaims && type === 'money') || (location.pathname.startsWith('/groups') && type === 'group') || (isClientMgmt && type === 'building') || (isUsers && type === 'user') || (isDistribution && type === 'flow') || (isBilling && type === 'list') || (isQuotesPolicies && type === 'doc');
-            return <button key={type} onClick={() => target && navigate(target)} style={{ width: 34, height: 34, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2, background: active ? '#0B5AA0' : 'transparent', color: active ? '#fff' : '#2f3742' }}><RailIcon type={type} /></button>;
+            const active = (isDashboard && type === 'grid') || (isClaims && type === 'money') || (location.pathname.startsWith('/groups') && type === 'group') || (isClientMgmt && type === 'building') || (isUsers && type === 'user') || (isDistribution && type === 'flow') || (isBilling && type === 'list') || (isQuotesPolicies && type === 'doc');
+            return <button key={type} title={railLabels[type]} aria-label={railLabels[type]} onClick={() => target && navigate(target)} style={{ width: 34, height: 34, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2, background: active ? '#0B5AA0' : 'transparent', color: active ? '#fff' : '#2f3742' }}><RailIcon type={type} /></button>;
           })}
         </aside>
 
