@@ -1,6 +1,7 @@
 // AI_GENERATED | HUMAN_VALIDATION_REQUIRED
 // Tests for GroupService: group code generation, validation (VR-001..VR-004), create, update.
 using FluentAssertions;
+using InsureEdge.Application.Validation;
 using InsureEdge.Application.DTOs.Group;
 using InsureEdge.Application.Interfaces;
 using InsureEdge.Application.Services;
@@ -54,7 +55,7 @@ public class GroupServiceTests
                  return g;
              });
 
-        var req = new CreateGroupRequest("Test Group", 100, "test@example.com", "desc", false, false,
+        var req = new CreateGroupRequest("Test Group", 100, "test@example.com", "description", false, false,
             new List<long>(), new List<ScreenPermissionSaveDto>());
         var group = await _svc.CreateGroupAsync(req);
 
@@ -81,16 +82,16 @@ public class GroupServiceTests
         var req = new CreateGroupRequest("", 1, null, null, false, false, [], []);
         var act = async () => await _svc.CreateGroupAsync(req);
         await act.Should().ThrowAsync<ValidationException>()
-            .Where(e => e.Errors.Contains("Group Name is required."));
+            .Where(e => e.Errors.Contains(GroupValidator.GroupNameRequired));
     }
 
     [Fact]
     public async Task CreateGroup_NameTooLong_ThrowsValidationException()
     {
-        var req = new CreateGroupRequest(new string('X', 201), 1, null, null, false, false, [], []);
+        var req = new CreateGroupRequest(new string('X', 76), 1, null, null, false, false, [], []);
         var act = async () => await _svc.CreateGroupAsync(req);
         await act.Should().ThrowAsync<ValidationException>()
-            .Where(e => e.Errors.Any(e2 => e2.Contains("200")));
+            .Where(e => e.Errors.Contains(GroupValidator.GroupNameInvalid));
     }
 
     [Fact]
@@ -99,7 +100,7 @@ public class GroupServiceTests
         var req = new CreateGroupRequest("Valid Name", 0, null, null, false, false, [], []);
         var act = async () => await _svc.CreateGroupAsync(req);
         await act.Should().ThrowAsync<ValidationException>()
-            .Where(e => e.Errors.Contains("Group Leader is required."));
+            .Where(e => e.Errors.Contains(GroupValidator.GroupLeaderRequired));
     }
 
     [Fact]
@@ -108,16 +109,16 @@ public class GroupServiceTests
         var req = new CreateGroupRequest("Valid Name", 1, "not-an-email", null, false, false, [], []);
         var act = async () => await _svc.CreateGroupAsync(req);
         await act.Should().ThrowAsync<ValidationException>()
-            .Where(e => e.Errors.Any(e2 => e2.Contains("email")));
+            .Where(e => e.Errors.Contains(GroupValidator.GroupEmailInvalid));
     }
 
     [Fact]
     public async Task CreateGroup_DescTooLong_ThrowsValidationException()
     {
-        var req = new CreateGroupRequest("Valid Name", 1, null, new string('D', 501), false, false, [], []);
+        var req = new CreateGroupRequest("Valid Name", 1, null, new string('D', 1001), false, false, [], []);
         var act = async () => await _svc.CreateGroupAsync(req);
         await act.Should().ThrowAsync<ValidationException>()
-            .Where(e => e.Errors.Any(e2 => e2.Contains("500")));
+            .Where(e => e.Errors.Contains(GroupValidator.GroupDescLength));
     }
 
     [Fact]

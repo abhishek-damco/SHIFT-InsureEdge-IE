@@ -190,7 +190,7 @@ export default function MakePaymentPage() {
               </thead>
               <tbody>
                 {transactions.length === 0
-                  ? <tr className="grid-row"><td colSpan={9} style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>No billing records found.</td></tr>
+                  ? <tr className="grid-row"><td colSpan={9} style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>No Data Available</td></tr>
                   : transactions.map(t => (
                     <tr key={t.id} className="grid-row">
                       <td>{t.transaction_type}</td>

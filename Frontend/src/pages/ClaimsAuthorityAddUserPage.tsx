@@ -381,7 +381,7 @@ export default function ClaimsAuthorityAddUserPage() {
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleColDefs.length + 2} style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>No records found.</td>
+                  <td colSpan={visibleColDefs.length + 2} style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>No Data Available</td>
                 </tr>
               ) : rows.map((row, idx) => {
                 const isSelected = selectedId === row.id;

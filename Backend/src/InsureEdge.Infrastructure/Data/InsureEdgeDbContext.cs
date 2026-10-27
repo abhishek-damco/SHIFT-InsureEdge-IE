@@ -189,7 +189,7 @@ public class InsureEdgeDbContext : DbContext
             e.Ignore(x => x.IsActive);
             e.Ignore(x => x.IsSubmodule);
             e.Ignore(x => x.ParentModuleId);
-            e.Ignore(x => x.DisplayOrder);
+            e.Property(x => x.DisplayOrder).HasColumnName("sort_order"); // QA UGM-09: OutSystems module order
         });
 
         // User â€” table is "user" (singular); EF would pluralize to "users" without this

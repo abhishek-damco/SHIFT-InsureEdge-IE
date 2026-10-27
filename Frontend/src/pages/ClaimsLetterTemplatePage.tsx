@@ -211,7 +211,7 @@ export default function ClaimsLetterTemplatePage() {
                 <button onClick={() => refetch()} style={{ padding: '6px 16px', border: '1px solid #1565c0', borderRadius: '4px', background: '#fff', color: '#1565c0', cursor: 'pointer', fontSize: '13px' }}>Retry</button>
               </td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={totalCols} style={{ ...TD, textAlign: 'center', padding: '40px', color: '#888' }}>No records found.</td></tr>
+              <tr><td colSpan={totalCols} style={{ ...TD, textAlign: 'center', padding: '40px', color: '#888' }}>No Data Available</td></tr>
             ) : filtered.map((row, idx) => (
               <tr key={row.id} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f9fafb' }}>
                 {/* row number in the ≡ column */}

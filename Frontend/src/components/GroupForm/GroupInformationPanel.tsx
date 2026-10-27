@@ -1,5 +1,6 @@
 // US-002/US-004: Group Information panel — Name, Code (read-only), Email, Leader, Desc, Status
 import type { UserSelectDto } from '../../types/User';
+import { GROUP_NAME_MAX, GROUP_EMAIL_MAX, GROUP_DESC_MAX } from './groupValidation';
 
 export interface GroupInfoValues {
   groupName: string;
@@ -70,7 +71,7 @@ export default function GroupInformationPanel({
           value={values.groupName}
           onChange={e => onChange('groupName', e.target.value)}
           className={errors.groupName ? 'error' : ''}
-          maxLength={200}
+          maxLength={GROUP_NAME_MAX}
           disabled={readOnly}
           style={{ height: 27, padding: '5px 9px', borderRadius: 2, fontSize: 11, background: '#f8f9fc' }}
         />
@@ -81,10 +82,11 @@ export default function GroupInformationPanel({
         <div className="form-group" style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11 }}>Group Email ID</label>
           <input
-            type="email"
+            type="text"
             value={values.groupEmailId}
             onChange={e => onChange('groupEmailId', e.target.value)}
             className={errors.groupEmailId ? 'error' : ''}
+            maxLength={GROUP_EMAIL_MAX}
             disabled={readOnly}
             style={{ height: 27, padding: '5px 9px', borderRadius: 2, fontSize: 11, background: '#f8f9fc' }}
           />
@@ -115,7 +117,7 @@ export default function GroupInformationPanel({
           value={values.groupDesc}
           onChange={e => onChange('groupDesc', e.target.value)}
           className={errors.groupDesc ? 'error' : ''}
-          maxLength={500}
+          maxLength={GROUP_DESC_MAX}
           disabled={readOnly}
           style={{ height: 53, padding: '6px 9px', borderRadius: 2, fontSize: 11, background: '#f8f9fc', resize: 'vertical' }}
         />

@@ -2893,7 +2893,7 @@ function InsuredPolicyContent({ claimId }: { claimId: number }) {
                 </thead>
                 <tbody>
                   {(data?.namedInsureds ?? []).length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: '12px 10px', color: '#9ca3af', textAlign: 'center' }}>No data available</td></tr>
+                    <tr><td colSpan={8} style={{ padding: '12px 10px', color: '#9ca3af', textAlign: 'center' }}>No Data Available</td></tr>
                   ) : (data?.namedInsureds ?? []).map((row, idx) => (
                     <tr key={row.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '9px 10px', color: '#0B5AA0', fontWeight: 500 }}>{idx + 1}</td>
@@ -2923,7 +2923,7 @@ function InsuredPolicyContent({ claimId }: { claimId: number }) {
                 </thead>
                 <tbody>
                   {(data?.organizations ?? []).length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: '12px 10px', color: '#9ca3af', textAlign: 'center' }}>No data available</td></tr>
+                    <tr><td colSpan={8} style={{ padding: '12px 10px', color: '#9ca3af', textAlign: 'center' }}>No Data Available</td></tr>
                   ) : (data?.organizations ?? []).map((row, idx) => (
                     <tr key={row.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '9px 10px', color: '#0B5AA0', fontWeight: 500 }}>{idx + 1}</td>

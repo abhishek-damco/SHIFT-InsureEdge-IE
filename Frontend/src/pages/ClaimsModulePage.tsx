@@ -276,7 +276,7 @@ export default function ClaimsModulePage({ moduleKey }: { moduleKey: ModuleKey }
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
-                <tr><td colSpan={config.columns.length + 3} style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>No records found.</td></tr>
+                <tr><td colSpan={config.columns.length + 3} style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>No Data Available</td></tr>
               ) : pageRows.map((row, index) => (
                 <tr key={row[0]} style={{ borderBottom: '1px solid #edf1f5' }}>
                   <td style={{ padding: '10px 10px', borderRight: '1px solid #edf1f5' }} />

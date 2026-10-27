@@ -1,7 +1,7 @@
 // US-003/US-004/US-005/US-006/US-007/US-011/US-012: Group detail — view + inline edit
 // All three sections (Info, Members, Rights) are inline-editable; no popups.
 // Group Rights always shows ALL screens merged with saved permissions.
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -12,6 +12,10 @@ import { groupsApi } from '../api/groups';
 import { usePermissions } from '../contexts/PermissionContext';
 import type { ScreenPermissionSaveDto, ScreenPermissionDto, UpdateGroupInfoRequest } from '../types/Group';
 import type { UserSelectDto } from '../types/User';
+import {
+  validateGroupInfo, type GroupInfoErrors, GROUP_NAME_MAX, GROUP_EMAIL_MAX, GROUP_DESC_MAX,
+} from '../components/GroupForm/groupValidation';
+import { InfoTooltip, GROUP_RIGHTS_TOOLTIP } from '../components/GroupForm/GroupFormParts';
 
 type AnyMutation<TVar> = { mutateAsync: (vars: TVar) => Promise<unknown>; isPending: boolean };
 
@@ -71,21 +75,25 @@ function InfoPanel({
   const [email, setEmail] = useState(group.groupEmailId ?? '');
   const [desc, setDesc] = useState(group.groupDesc ?? '');
   const [status, setStatus] = useState<'Active' | 'Inactive'>(group.status as 'Active' | 'Inactive');
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [errs, setErrs] = useState<GroupInfoErrors>({});
+  const [submitted, setSubmitted] = useState(false);
+
+  // QA UGM-16: once Save has been tried, re-check on every change so errors clear as soon as valid.
+  useEffect(() => {
+    if (submitted) setErrs(validateGroupInfo({ groupName: name, groupLeader: leader, groupEmailId: email, groupDesc: desc }));
+  }, [submitted, name, leader, email, desc]);
 
   const startEdit = () => {
     setName(group.groupName); setLeader(group.groupLeader ?? 0);
     setEmail(group.groupEmailId ?? ''); setDesc(group.groupDesc ?? '');
-    setStatus(group.status as 'Active' | 'Inactive'); setErrs({});
+    setStatus(group.status as 'Active' | 'Inactive'); setErrs({}); setSubmitted(false);
     setEditing(true);
   };
   const cancel = () => setEditing(false);
 
   const save = async () => {
-    const e: Record<string, string> = {};
-    if (!name.trim()) e.name = 'Required.';
-    if (!leader) e.leader = 'Required.';
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Invalid email.';
+    setSubmitted(true);
+    const e = validateGroupInfo({ groupName: name, groupLeader: leader, groupEmailId: email, groupDesc: desc });
     setErrs(e);
     if (Object.keys(e).length) return;
     try {
@@ -130,7 +138,7 @@ function InfoPanel({
           </div>
           <div style={{ marginBottom: 18 }}>
             <InfoLabel label="Group Email ID" />
-            <div style={{ fontSize: 14, color: '#111827' }}>{group.groupEmailId || '–'}</div>
+            <div style={{ fontSize: 14, color: '#111827' }}>{group.groupEmailId || '-'}</div>
           </div>
           <div style={{ marginBottom: 18 }}>
             <InfoLabel label="Group Leader" />
@@ -139,36 +147,37 @@ function InfoPanel({
                 <Initials name={leaderUser?.fullName ?? group.groupLeaderName ?? ''} size={26} />
                 <span style={{ fontSize: 14, color: '#111827' }}>{leaderUser?.fullName ?? group.groupLeaderName}</span>
               </div>
-            ) : <div style={{ fontSize: 14, color: '#9ca3af' }}>–</div>}
+            ) : <div style={{ fontSize: 14, color: '#9ca3af' }}>-</div>}
           </div>
           <div>
             <InfoLabel label="Group Description" />
-            <div style={{ fontSize: 14, color: '#111827' }}>{group.groupDesc || '–'}</div>
+            <div style={{ fontSize: 14, color: '#111827' }}>{group.groupDesc || '-'}</div>
           </div>
         </>
       ) : (
         <>
           <div className="form-group">
             <label>Group Name <span style={{ color: '#dc2626' }}>*</span></label>
-            <input value={name} onChange={e => setName(e.target.value)} maxLength={200} className={errs.name ? 'error' : ''} />
-            {errs.name && <div className="error-msg">{errs.name}</div>}
+            <input value={name} onChange={e => setName(e.target.value)} maxLength={GROUP_NAME_MAX} className={errs.groupName ? 'error' : ''} />
+            {errs.groupName && <div className="error-msg">{errs.groupName}</div>}
           </div>
           <div className="form-group">
             <label>Group Leader <span style={{ color: '#dc2626' }}>*</span></label>
-            <select value={leader || ''} onChange={e => setLeader(Number(e.target.value))} className={errs.leader ? 'error' : ''}>
+            <select value={leader || ''} onChange={e => setLeader(Number(e.target.value))} className={errs.groupLeader ? 'error' : ''}>
               <option value="">— Select Leader —</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
             </select>
-            {errs.leader && <div className="error-msg">{errs.leader}</div>}
+            {errs.groupLeader && <div className="error-msg">{errs.groupLeader}</div>}
           </div>
           <div className="form-group">
             <label>Group Email ID</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="group@example.com" className={errs.email ? 'error' : ''} />
-            {errs.email && <div className="error-msg">{errs.email}</div>}
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="group@example.com" maxLength={GROUP_EMAIL_MAX} className={errs.groupEmailId ? 'error' : ''} />
+            {errs.groupEmailId && <div className="error-msg">{errs.groupEmailId}</div>}
           </div>
           <div className="form-group">
             <label>Group Description</label>
-            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} maxLength={500} style={{ resize: 'vertical' }} />
+            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} maxLength={GROUP_DESC_MAX} className={errs.groupDesc ? 'error' : ''} style={{ resize: 'vertical' }} />
+            {errs.groupDesc && <div className="error-msg">{errs.groupDesc}</div>}
           </div>
           <div className="form-group">
             <label>Status</label>
@@ -249,7 +258,7 @@ function MembersPanel({
         /* View mode — member list */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {memberDetails.length === 0 && (
-            <div style={{ color: '#9ca3af', fontSize: 13, padding: '8px 0' }}>No members in this group.</div>
+            <div style={{ color: '#9ca3af', fontSize: 13, padding: '8px 0', textAlign: 'center' }}>No Data Available</div>
           )}
           {memberDetails
             .filter(m => !search || m.fullName.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase()))
@@ -401,7 +410,7 @@ function GroupRightsPanel({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Group Rights</span>
-            <span title="Grant access to system modules and sub-modules" style={{ cursor: 'help', color: '#9ca3af', fontSize: 14 }}>ⓘ</span>
+            <InfoTooltip text={GROUP_RIGHTS_TOOLTIP} />
           </div>
           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
             You can grant access to the system module and their sub-module for the user group

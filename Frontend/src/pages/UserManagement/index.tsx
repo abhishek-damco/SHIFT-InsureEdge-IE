@@ -4,8 +4,13 @@ import { usersApi } from '../../api/users';
 import type { UserListItem } from '../../types/User';
 import StatCards from '../../components/StatCards/StatCards';
 import PaginationBar from '../../components/PaginationBar';
+import {
+  ColumnFilterPopup, applyColumnFilters, distinctValues, hasActiveFilters, type ColumnFilters,
+} from '../../components/grid/ColumnFilter';
 
 const PAGE_SIZE = 10;
+// While a column filter is in use, every user is loaded so the filter covers all pages (QA UGM-05).
+const ALL_ROWS_PAGE_SIZE = 10000;
 type SortDir = 'asc' | 'desc';
 type ColKey = 'userName' | 'userId' | 'groups' | 'contact' | 'email' | 'office' | 'address' | 'status';
 
@@ -21,11 +26,6 @@ const ALL_COLS: ColDef[] = [
   { key: 'address',  label: 'Address',           locked: false },
   { key: 'status',   label: 'Status',            locked: true,  width: 110, sortable: true },
 ];
-
-type ColFilterState = Partial<Record<ColKey, string[]>>;
-type CondFilter = Partial<Record<ColKey, { op: string; value: string }>>;
-
-const CONDITION_OPS = ['Contains', 'Does not contain', 'Equals', 'Starts with', 'Ends with'];
 
 function useOutsideClick(ref: React.RefObject<HTMLElement | null>, cb: () => void) {
   useEffect(() => {
@@ -65,154 +65,6 @@ function EyeIcon() {
 }
 function UploadIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v13" /><path d="m7 8 5-5 5 5" /><path d="M5 21h14" /></svg>;
-}
-
-// ─── Column Filter Popup ──────────────────────────────────────────────────────
-function ColumnFilterPopup({
-  col, allRows, valueFilter, condFilter,
-  onApplyValue, onApplyCondition, onClear, onClose, anchorRect,
-}: {
-  col: ColDef;
-  allRows: UserListItem[];
-  valueFilter: string[];
-  condFilter: { op: string; value: string } | undefined;
-  onApplyValue: (vals: string[]) => void;
-  onApplyCondition: (f: { op: string; value: string } | undefined) => void;
-  onClear: () => void;
-  onClose: () => void;
-  anchorRect: DOMRect;
-}) {
-  const [tab, setTab] = useState<'value' | 'condition'>('value');
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string[]>(valueFilter);
-  const [condOp, setCondOp] = useState(condFilter?.op ?? 'Contains');
-  const [condVal, setCondVal] = useState(condFilter?.value ?? '');
-  const ref = useRef<HTMLDivElement>(null);
-  useOutsideClick(ref, onClose);
-
-  const uniqueVals = Array.from(new Set(
-    allRows.map(r => getCellValue(r, col.key)).filter(Boolean)
-  )).sort();
-
-  const visibleVals = uniqueVals.filter(v => v.toLowerCase().includes(search.toLowerCase()));
-  const allChecked = visibleVals.length > 0 && visibleVals.every(v => selected.includes(v));
-
-  const toggleVal = (v: string) =>
-    setSelected(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
-  const toggleAll = () =>
-    setSelected(allChecked ? selected.filter(x => !visibleVals.includes(x)) : [...new Set([...selected, ...visibleVals])]);
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed',
-        top: anchorRect.bottom + 4,
-        left: anchorRect.left,
-        zIndex: 9999,
-        background: '#fff', border: '1px solid #d1d5db', borderRadius: 8,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.14)', minWidth: 280, maxWidth: 340,
-      }}
-      onClick={e => e.stopPropagation()}
-    >
-      {/* Column name header */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontWeight: 600, fontSize: 13, color: '#111827' }}>
-        {col.label}
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
-        {(['condition', 'value'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            flex: 1, padding: '9px 0', border: 'none', background: 'none', fontSize: 13,
-            fontWeight: tab === t ? 600 : 400,
-            color: tab === t ? '#0B5AA0' : '#6b7280',
-            borderBottom: tab === t ? '2px solid #0B5AA0' : '2px solid transparent',
-            cursor: 'pointer',
-          }}>
-            {t === 'condition' ? 'Filter by Condition' : 'Filter by Value'}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'value' ? (
-        <>
-          {/* Search within values */}
-          <div style={{ padding: '10px 14px 6px' }}>
-            <input
-              autoFocus
-              placeholder="Search"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ fontSize: 13, padding: '7px 10px', width: '100%', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          {/* Value list */}
-          <div style={{ maxHeight: 200, overflowY: 'auto', padding: '4px 0' }}>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-              background: allChecked ? '#eff6ff' : 'transparent',
-            }}>
-              <input type="checkbox" checked={allChecked} onChange={toggleAll}
-                style={{ width: 15, height: 15, accentColor: '#0B5AA0' }} />
-              Select All
-            </label>
-            {visibleVals.map(v => (
-              <label key={v} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 14px', cursor: 'pointer', fontSize: 13,
-                background: selected.includes(v) ? '#eff6ff' : 'transparent',
-              }}>
-                <input type="checkbox" checked={selected.includes(v)} onChange={() => toggleVal(v)}
-                  style={{ width: 15, height: 15, accentColor: '#0B5AA0' }} />
-                {v}
-              </label>
-            ))}
-            {visibleVals.length === 0 && (
-              <div style={{ padding: '12px 14px', color: '#9ca3af', fontSize: 13 }}>No values found</div>
-            )}
-          </div>
-
-          {/* Buttons */}
-          <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: '1px solid #f3f4f6' }}>
-            <button className="btn-primary" style={{ flex: 1, padding: '8px 0', fontSize: 13 }}
-              onClick={() => { onApplyValue(selected); onClose(); }}>Apply</button>
-            <button className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }}
-              onClick={() => { onClose(); }}>Cancel</button>
-            <button className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }}
-              onClick={() => { setSelected([]); onClear(); onClose(); }}>Clear</button>
-          </div>
-        </>
-      ) : (
-        /* Condition tab */
-        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <select value={condOp} onChange={e => setCondOp(e.target.value)}
-            style={{ fontSize: 13, width: '100%' }}>
-            {CONDITION_OPS.map(op => <option key={op}>{op}</option>)}
-          </select>
-          <input
-            autoFocus
-            placeholder="Value..."
-            value={condVal}
-            onChange={e => setCondVal(e.target.value)}
-            style={{ fontSize: 13, width: '100%' }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-primary" style={{ flex: 1, fontSize: 13, padding: '8px 0' }}
-              onClick={() => { onApplyCondition(condVal ? { op: condOp, value: condVal } : undefined); onClose(); }}>
-              Apply
-            </button>
-            <button className="btn-secondary" style={{ fontSize: 13, padding: '8px 14px' }}
-              onClick={() => { setCondVal(''); onApplyCondition(undefined); onClose(); }}>
-              Clear
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ─── Modify Columns Panel ──────────────────────────────────────────────────────
@@ -283,11 +135,15 @@ export default function UserManagementPage() {
   const [modifyColsRect, setModifyColsRect] = useState<DOMRect | null>(null);
   const modifyColsRef = useRef<HTMLButtonElement>(null);
 
-  // Column filters
-  const [valueFilters, setValueFilters] = useState<ColFilterState>({});
-  const [condFilters, setCondFilters] = useState<CondFilter>({});
+  // Column filters (QA UGM-05). The server pages the list, so filtering only the current page
+  // missed matches on other pages; while a filter is open or applied, load every row instead
+  // and page the filtered result here.
+  const [filters, setFilters] = useState<ColumnFilters<ColKey>>({});
   const [openFilterCol, setOpenFilterCol] = useState<ColKey | null>(null);
   const [filterAnchorRects, setFilterAnchorRects] = useState<Partial<Record<ColKey, DOMRect>>>({});
+  const [everyRow, setEveryRow] = useState<UserListItem[] | null>(null);
+  const filtering = hasActiveFilters(filters);
+  const needAllRows = filtering || openFilterCol !== null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -300,6 +156,17 @@ export default function UserManagementPage() {
   }, [search, page, pageSize, sortBy, sortDir]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Every row for filtering; reloaded when the search or sort changes.
+  useEffect(() => { setEveryRow(null); }, [search, sortBy, sortDir]);
+  useEffect(() => {
+    if (!needAllRows || everyRow) return;
+    let cancelled = false;
+    usersApi.list({ search, page: 1, pageSize: ALL_ROWS_PAGE_SIZE, sortBy, sortDir })
+      .then(res => { if (!cancelled) setEveryRow(res.items); })
+      .catch(() => { if (!cancelled) setEveryRow([]); });
+    return () => { cancelled = true; };
+  }, [needAllRows, everyRow, search, sortBy, sortDir]);
 
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
@@ -319,33 +186,21 @@ export default function UserManagementPage() {
       return next;
     });
 
-  // Client-side filtering (applied on top of server search/sort)
-  const filtered = allItems.filter(u => {
-    for (const col of ALL_COLS) {
-      const valF = valueFilters[col.key];
-      const condF = condFilters[col.key];
-      const cell = getCellValue(u, col.key).toLowerCase();
+  const filteredAll = filtering ? applyColumnFilters(everyRow ?? [], filters, getCellValue) : [];
+  const filtered = filtering ? filteredAll.slice((page - 1) * pageSize, page * pageSize) : allItems;
+  const totalRows = filtering ? filteredAll.length : total;
+  const tableLoading = filtering ? everyRow === null : loading;
 
-      if (valF && valF.length > 0) {
-        if (!valF.some(v => v.toLowerCase() === cell)) return false;
-      }
-      if (condF && condF.value) {
-        const target = condF.value.toLowerCase();
-        switch (condF.op) {
-          case 'Contains':         if (!cell.includes(target)) return false; break;
-          case 'Does not contain': if (cell.includes(target)) return false; break;
-          case 'Equals':           if (cell !== target) return false; break;
-          case 'Starts with':      if (!cell.startsWith(target)) return false; break;
-          case 'Ends with':        if (!cell.endsWith(target)) return false; break;
-        }
-      }
-    }
-    return true;
-  });
+  const setFilter = (key: ColKey, f: ColumnFilters<ColKey>[ColKey]) => {
+    setFilters(prev => {
+      const next = { ...prev };
+      if (f) next[key] = f; else delete next[key];
+      return next;
+    });
+    setPage(1);
+  };
 
-  const hasFilter = (key: ColKey) =>
-    !!((valueFilters[key] && valueFilters[key]!.length > 0) ||
-    (condFilters[key] && !!condFilters[key]!.value));
+  const hasFilter = (key: ColKey) => !!filters[key];
 
   const renderedCols = ALL_COLS.filter(c => visibleCols.has(c.key));
 
@@ -470,16 +325,11 @@ export default function UserManagementPage() {
                     {/* Filter popup — fixed positioning so it escapes table overflow */}
                     {openFilterCol === col.key && filterAnchorRects[col.key] && (
                       <ColumnFilterPopup
-                        col={col}
-                        allRows={allItems}
-                        valueFilter={valueFilters[col.key] ?? []}
-                        condFilter={condFilters[col.key]}
-                        onApplyValue={vals => setValueFilters(p => ({ ...p, [col.key]: vals }))}
-                        onApplyCondition={f => setCondFilters(p => ({ ...p, [col.key]: f }))}
-                        onClear={() => {
-                          setValueFilters(p => { const n = { ...p }; delete n[col.key]; return n; });
-                          setCondFilters(p => { const n = { ...p }; delete n[col.key]; return n; });
-                        }}
+                        title={col.label}
+                        values={distinctValues(everyRow ?? [], u => getCellValue(u, col.key))}
+                        loading={everyRow === null}
+                        current={filters[col.key]}
+                        onApply={f => setFilter(col.key, f)}
                         onClose={() => setOpenFilterCol(null)}
                         anchorRect={filterAnchorRects[col.key]!}
                       />
@@ -489,13 +339,13 @@ export default function UserManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {tableLoading ? (
                 <tr><td colSpan={2 + renderedCols.length} style={{ padding: 48, textAlign: 'center' }}>
                   <span className="spinner" />
                 </td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={2 + renderedCols.length} style={{ padding: 48, textAlign: 'center', color: '#9ca3af' }}>
-                  No users found.
+                  No Data Available
                 </td></tr>
               ) : filtered.map((u, idx) => {
                 const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
@@ -581,7 +431,7 @@ export default function UserManagementPage() {
         <PaginationBar
           page={page}
           pageSize={pageSize}
-          total={total}
+          total={totalRows}
           onPageChange={setPage}
           onPageSizeChange={size => { setPageSize(size); setPage(1); }}
         />

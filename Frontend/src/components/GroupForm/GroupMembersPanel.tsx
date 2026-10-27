@@ -71,6 +71,13 @@ export default function GroupMembersPanel({ selectedIds, users, onChange, readOn
         </div>
       )}
 
+      {/* QA UGM-11 */}
+      {selectedUsers.length === 0 && !search.trim() && (
+        <div style={{ padding: '14px 0', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+          No Data Available
+        </div>
+      )}
+
       {!readOnly && (
         <>
           <div style={{ position: 'relative', marginBottom: search.trim() ? 8 : 0 }}>
@@ -98,7 +105,7 @@ export default function GroupMembersPanel({ selectedIds, users, onChange, readOn
           {search.trim() && <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--color-gray-200)', borderRadius: 2 }}>
             {filtered.length === 0 && (
               <div style={{ padding: 16, color: 'var(--color-gray-500)', textAlign: 'center' }}>
-                No users found.
+                No Data Available
               </div>
             )}
             {filtered.map(u => {

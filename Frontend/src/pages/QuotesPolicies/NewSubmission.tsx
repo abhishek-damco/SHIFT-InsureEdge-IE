@@ -2134,7 +2134,7 @@ function StepPolicyInfo({
                 <tr><td colSpan={8}>
                   <div className="empty-state">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="#d1d5db"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginTop: 8 }}>No data available</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginTop: 8 }}>No Data Available</div>
                     <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Please add data to get started.</div>
                   </div>
                 </td></tr>
@@ -2204,7 +2204,7 @@ function StepPolicyInfo({
               <tr><td colSpan={8}>
                 <div className="empty-state">
                   <svg width="40" height="40" viewBox="0 0 24 24" fill="#d1d5db"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginTop: 8 }}>No data available</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginTop: 8 }}>No Data Available</div>
                   <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Please add data to get started.</div>
                 </div>
               </td></tr>

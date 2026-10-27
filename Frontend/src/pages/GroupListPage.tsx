@@ -10,9 +10,20 @@ import { useGroupList } from '../hooks/useGroups';
 import { groupsApi } from '../api/groups';
 import { usePermissions } from '../contexts/PermissionContext';
 import type { GroupListDto } from '../types/Group';
+import {
+  ColumnFilterPopup, applyColumnFilters, distinctValues, hasActiveFilters, type ColumnFilters,
+} from '../components/grid/ColumnFilter';
 
 const DEFAULT_PAGE_SIZE = 10;
-const EXPORT_FORMATS = ['CSV', 'PDF', 'XLSX', 'TXT'];
+// While a column filter is in use, every group is loaded so the filter covers all pages (QA UGM-05).
+const ALL_ROWS_PAGE_SIZE = 10000;
+// QA UGM-06: OutSystems labels and order.
+const EXPORT_FORMATS = [
+  { fmt: 'PDF',  label: 'Download PDF',   icon: 'PDF', color: '#dc2626' },
+  { fmt: 'CSV',  label: 'Download CSV',   icon: 'CSV', color: '#16a34a' },
+  { fmt: 'XLSX', label: 'Download Excel', icon: 'XLS', color: '#15803d' },
+  { fmt: 'TXT',  label: 'Download Txt',   icon: 'TXT', color: '#4b5563' },
+];
 
 // â”€â”€â”€ Column definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type ColKey = 'groupName' | 'groupCode' | 'memberCount' | 'createdByName' | 'groupEmailId' | 'createdOn' | 'groupDesc' | 'status';
@@ -28,12 +39,15 @@ const ALL_COLS: ColDef[] = [
   { key: 'groupDesc',    label: 'Group Description',  locked: false, sortable: false },
   { key: 'status',       label: 'Status',             locked: true,  width: 110, sortable: true },
 ];
+const COL_BY_KEY = Object.fromEntries(ALL_COLS.map(c => [c.key, c])) as Record<ColKey, ColDef>;
 
-// â”€â”€â”€ Column filter state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-type ColFilterState = Partial<Record<ColKey, string[]>>;   // selected values (empty = no filter)
-type CondFilter = Partial<Record<ColKey, { op: string; value: string }>>;
-
-const CONDITION_OPS = ['Contains', 'Does not contain', 'Equals', 'Starts with', 'Ends with'];
+// Text a column filter matches against — what the cell shows.
+function getCell(row: GroupListDto, key: ColKey): string {
+  const raw = row[key];
+  if (raw == null) return '';
+  if (key === 'createdOn') return format(parseISO(String(raw)), 'MM-dd-yyyy');
+  return String(raw);
+}
 
 // â”€â”€â”€ Utility: close on outside click â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function useOutsideClick(ref: React.RefObject<HTMLElement | null>, cb: () => void) {
@@ -69,158 +83,17 @@ function DownloadIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v13" /><path d="m7 11 5 5 5-5" /><path d="M5 21h14" /></svg>;
 }
 
-// â”€â”€â”€ Column Filter Popup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function ColumnFilterPopup({
-  col, allRows, valueFilter, condFilter,
-  onApplyValue, onApplyCondition, onClear, onClose, anchorRect,
-}: {
-  col: ColDef;
-  allRows: GroupListDto[];
-  valueFilter: string[];
-  condFilter: { op: string; value: string } | undefined;
-  onApplyValue: (vals: string[]) => void;
-  onApplyCondition: (f: { op: string; value: string } | undefined) => void;
-  onClear: () => void;
-  onClose: () => void;
-  anchorRect: DOMRect;
-}) {
-  const [tab, setTab] = useState<'value' | 'condition'>('value');
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string[]>(valueFilter);
-  const [condOp, setCondOp] = useState(condFilter?.op ?? 'Contains');
-  const [condVal, setCondVal] = useState(condFilter?.value ?? '');
-  const ref = useRef<HTMLDivElement>(null);
-  useOutsideClick(ref, onClose);
-
-  const uniqueVals = Array.from(new Set(
-    allRows.map(r => {
-      const v = r[col.key as keyof GroupListDto];
-      return v == null ? '' : String(v);
-    }).filter(Boolean)
-  )).sort();
-
-  const visibleVals = uniqueVals.filter(v => v.toLowerCase().includes(search.toLowerCase()));
-  const allChecked = visibleVals.length > 0 && visibleVals.every(v => selected.includes(v));
-
-  const toggleVal = (v: string) =>
-    setSelected(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
-  const toggleAll = () =>
-    setSelected(allChecked ? selected.filter(x => !visibleVals.includes(x)) : [...new Set([...selected, ...visibleVals])]);
-
+// QA UGM-06: file-type icon for each Download option.
+function FileTypeIcon({ label, color }: { label: string; color: string }) {
   return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed',
-        top: anchorRect.bottom + 4,
-        left: anchorRect.left,
-        zIndex: 9999,
-        background: '#fff', border: '1px solid #d1d5db', borderRadius: 8,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.14)', minWidth: 280, maxWidth: 340,
-      }}
-      onClick={e => e.stopPropagation()}
-    >
-      {/* Column name header */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontWeight: 600, fontSize: 13, color: '#111827' }}>
-        {col.label}
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
-        {(['condition', 'value'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            flex: 1, padding: '9px 0', border: 'none', background: 'none', fontSize: 13,
-            fontWeight: tab === t ? 600 : 400,
-            color: tab === t ? '#0B5AA0' : '#6b7280',
-            borderBottom: tab === t ? '2px solid #0B5AA0' : '2px solid transparent',
-            cursor: 'pointer',
-          }}>
-            {t === 'condition' ? 'Filter by Condition' : 'Filter by Value'}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'value' ? (
-        <>
-          {/* Search within values */}
-          <div style={{ padding: '10px 14px 6px' }}>
-            <input
-              autoFocus
-              placeholder="Search"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ fontSize: 13, padding: '7px 10px' }}
-            />
-          </div>
-
-          {/* Value list */}
-          <div style={{ maxHeight: 200, overflowY: 'auto', padding: '4px 0' }}>
-            {/* Select All */}
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '7px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 500,
-              background: allChecked ? '#eff6ff' : 'transparent',
-            }}>
-              <input type="checkbox" checked={allChecked} onChange={toggleAll}
-                style={{ width: 15, height: 15, accentColor: '#0B5AA0' }} />
-              Select All
-            </label>
-            {visibleVals.map(v => (
-              <label key={v} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 14px', cursor: 'pointer', fontSize: 13,
-                background: selected.includes(v) ? '#eff6ff' : 'transparent',
-              }}>
-                <input type="checkbox" checked={selected.includes(v)} onChange={() => toggleVal(v)}
-                  style={{ width: 15, height: 15, accentColor: '#0B5AA0' }} />
-                {col.key === 'createdOn' ? format(parseISO(v), 'MM-dd-yyyy') : v}
-              </label>
-            ))}
-            {visibleVals.length === 0 && (
-              <div style={{ padding: '12px 14px', color: '#9ca3af', fontSize: 13 }}>No values found</div>
-            )}
-          </div>
-
-          {/* Buttons */}
-          <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: '1px solid #f3f4f6' }}>
-            <button className="btn-primary" style={{ flex: 1, padding: '8px 0', fontSize: 13 }}
-              onClick={() => { onApplyValue(selected); onClose(); }}>Apply</button>
-            <button className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }}
-              onClick={() => { onClose(); }}>Cancel</button>
-            <button className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }}
-              onClick={() => { setSelected([]); onClear(); onClose(); }}>Clear</button>
-          </div>
-        </>
-      ) : (
-        /* Condition tab */
-        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <select value={condOp} onChange={e => setCondOp(e.target.value)}
-            style={{ fontSize: 13, width: '100%' }}>
-            {CONDITION_OPS.map(op => <option key={op}>{op}</option>)}
-          </select>
-          <input
-            autoFocus
-            placeholder="Value..."
-            value={condVal}
-            onChange={e => setCondVal(e.target.value)}
-            style={{ fontSize: 13, width: '100%' }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-primary" style={{ flex: 1, fontSize: 13, padding: '8px 0' }}
-              onClick={() => { onApplyCondition(condVal ? { op: condOp, value: condVal } : undefined); onClose(); }}>
-              Apply
-            </button>
-            <button className="btn-secondary" style={{ fontSize: 13, padding: '8px 14px' }}
-              onClick={() => { setCondVal(''); onApplyCondition(undefined); onClose(); }}>
-              Clear
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+    <svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true">
+      <path d="M2 1h9l5 5v13H2z" fill="#fff" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M11 1v5h5" fill="none" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
+      <rect x="0.5" y="10" width="15" height="7" rx="1.5" fill={color} />
+      <text x="8" y="15.6" textAnchor="middle" fontSize="5.2" fontWeight="700" fill="#fff" fontFamily="Arial, sans-serif">{label}</text>
+    </svg>
   );
 }
-
 // â”€â”€â”€ Modify Columns Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ModifyColumnsPanel({
   visibleCols, onToggle, onClose, anchorRect,
@@ -365,41 +238,47 @@ export default function GroupListPage() {
       return next;
     });
 
-  // Column filters
-  const [valueFilters, setValueFilters] = useState<ColFilterState>({});
-  const [condFilters, setCondFilters] = useState<CondFilter>({});
+  // QA UGM-02: user-defined column order (drag a header onto another).
+  const [colOrder, setColOrder] = useState<ColKey[]>(ALL_COLS.map(c => c.key));
+  const [dragCol, setDragCol] = useState<ColKey | null>(null);
+  const moveCol = (from: ColKey, to: ColKey) => {
+    if (from === to) return;
+    setColOrder(prev => {
+      const next = prev.filter(k => k !== from);
+      next.splice(next.indexOf(to), 0, from);
+      return next;
+    });
+  };
+
+  // Column filters (QA UGM-05). The server pages the list, so filtering only the current page
+  // missed matches on other pages; while a filter is open or applied, load every row instead
+  // and page the filtered result here.
+  const [filters, setFilters] = useState<ColumnFilters<ColKey>>({});
+  const filtering = hasActiveFilters(filters);
+  const needAllRows = filtering || openFilterCol !== null;
 
   const { data, isLoading } = useGroupList({
     search, sortBy, sortOrder, page, pageSize,
   });
+  const { data: allData, isLoading: allLoading } = useGroupList({
+    search, sortBy, sortOrder, page: 1, pageSize: ALL_ROWS_PAGE_SIZE,
+  }, needAllRows);
 
-  const allRows: GroupListDto[] = data?.items ?? [];
+  const filteredAll = filtering ? applyColumnFilters(allData?.items ?? [], filters, getCell) : [];
+  const filtered: GroupListDto[] = filtering
+    ? filteredAll.slice((page - 1) * pageSize, page * pageSize)
+    : data?.items ?? [];
+  const totalRows = filtering ? filteredAll.length : data?.total ?? 0;
+  const tableLoading = filtering ? allLoading : isLoading;
 
-  // Apply client-side filters
-  const filtered = allRows.filter(row => {
-    for (const col of ALL_COLS) {
-      const valF = valueFilters[col.key];
-      const condF = condFilters[col.key];
-      const cellRaw = row[col.key as keyof GroupListDto];
-      const cell = cellRaw == null ? '' : String(cellRaw).toLowerCase();
-
-      if (valF && valF.length > 0) {
-        const match = valF.some(v => String(v).toLowerCase() === cell);
-        if (!match) return false;
-      }
-      if (condF && condF.value) {
-        const target = condF.value.toLowerCase();
-        switch (condF.op) {
-          case 'Contains':         if (!cell.includes(target)) return false; break;
-          case 'Does not contain': if (cell.includes(target)) return false; break;
-          case 'Equals':           if (cell !== target) return false; break;
-          case 'Starts with':      if (!cell.startsWith(target)) return false; break;
-          case 'Ends with':        if (!cell.endsWith(target)) return false; break;
-        }
-      }
-    }
-    return true;
-  });
+  const setFilter = (key: ColKey, f: ColumnFilters<ColKey>[ColKey]) => {
+    setFilters(prev => {
+      const next = { ...prev };
+      if (f) next[key] = f; else delete next[key];
+      return next;
+    });
+    setPage(1);
+  };
 
 
   const handleSort = (field: ColKey) => {
@@ -435,12 +314,10 @@ export default function GroupListPage() {
     } finally { setExporting(false); }
   }, [selectedIds, search]);
 
-  // Rendered columns in order
-  const renderedCols = ALL_COLS.filter(c => visibleCols.has(c.key));
+  // Rendered columns in the user's order
+  const renderedCols = colOrder.map(k => COL_BY_KEY[k]).filter(c => visibleCols.has(c.key));
 
-  const hasFilter = (key: ColKey) =>
-    !!((valueFilters[key] && valueFilters[key]!.length > 0) ||
-    (condFilters[key] && !!condFilters[key]!.value));
+  const hasFilter = (key: ColKey) => !!filters[key];
 
   const SortIcon = ({ field }: { field: ColKey }) =>
     sortBy === field
@@ -497,17 +374,14 @@ export default function GroupListPage() {
                 background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 230,
               }}>
-                {EXPORT_FORMATS.map(fmt => (
-                  <div key={fmt} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <button className="btn-secondary" style={{ width: '100%', textAlign: 'left', border: 'none', borderRadius: 0, padding: '9px 14px', fontSize: 13 }}
-                      onClick={() => handleExport(fmt, false)}>Export All as .{fmt}</button>
-                    {selectedIds.length > 0 && (
-                      <button className="btn-secondary" style={{ width: '100%', textAlign: 'left', border: 'none', borderRadius: 0, padding: '9px 14px', fontSize: 13, color: '#0B5AA0' }}
-                        onClick={() => handleExport(fmt, true)}>
-                        Export Selected ({selectedIds.length}) as .{fmt}
-                      </button>
-                    )}
-                  </div>
+                {/* Downloads the ticked rows when any are ticked, otherwise every row. */}
+                {EXPORT_FORMATS.map(({ fmt, label, icon, color }) => (
+                  <button key={fmt} className="btn-secondary"
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', border: 'none', borderBottom: '1px solid #f3f4f6', borderRadius: 0, padding: '9px 14px', fontSize: 13 }}
+                    onClick={() => handleExport(fmt, selectedIds.length > 0)}>
+                    <FileTypeIcon label={icon} color={color} />
+                    {label}
+                  </button>
                 ))}
               </div>
             )}
@@ -585,11 +459,17 @@ export default function GroupListPage() {
                 {renderedCols.map(col => (
                   <th
                     key={col.key}
+                    draggable
+                    title="Drag to reorder"
+                    onDragStart={e => { setDragCol(col.key); e.dataTransfer.effectAllowed = 'move'; }}
+                    onDragOver={e => { if (dragCol) e.preventDefault(); }}
+                    onDrop={e => { e.preventDefault(); if (dragCol) moveCol(dragCol, col.key); setDragCol(null); }}
+                    onDragEnd={() => setDragCol(null)}
                     style={{
                       padding: '10px 12px', borderBottom: '2px solid #e5e7eb', borderRight: '1px solid #e5e7eb',
                       fontWeight: 600, fontSize: 12, color: '#374151', whiteSpace: 'nowrap',
-                      width: col.width, cursor: col.sortable ? 'pointer' : 'default',
-                      userSelect: 'none',
+                      width: col.width, cursor: col.sortable ? 'pointer' : 'grab',
+                      userSelect: 'none', opacity: dragCol === col.key ? 0.5 : 1,
                     }}
                     onClick={() => col.sortable && handleSort(col.key)}
                   >
@@ -621,16 +501,11 @@ export default function GroupListPage() {
                     {/* Filter popup â€” rendered outside table via fixed positioning */}
                     {openFilterCol === col.key && filterAnchorRects[col.key] && (
                       <ColumnFilterPopup
-                        col={col}
-                        allRows={allRows}
-                        valueFilter={valueFilters[col.key] ?? []}
-                        condFilter={condFilters[col.key]}
-                        onApplyValue={vals => setValueFilters(p => ({ ...p, [col.key]: vals }))}
-                        onApplyCondition={f => setCondFilters(p => ({ ...p, [col.key]: f }))}
-                        onClear={() => {
-                          setValueFilters(p => { const n = { ...p }; delete n[col.key]; return n; });
-                          setCondFilters(p => { const n = { ...p }; delete n[col.key]; return n; });
-                        }}
+                        title={col.label}
+                        values={distinctValues(allData?.items ?? [], r => getCell(r, col.key))}
+                        loading={allLoading}
+                        current={filters[col.key]}
+                        onApply={f => setFilter(col.key, f)}
                         onClose={() => setOpenFilterCol(null)}
                         anchorRect={filterAnchorRects[col.key]!}
                       />
@@ -640,13 +515,13 @@ export default function GroupListPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading ? (
+              {tableLoading ? (
                 <tr><td colSpan={3 + renderedCols.length} style={{ padding: 48, textAlign: 'center' }}>
                   <span className="spinner" />
                 </td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={3 + renderedCols.length} style={{ padding: 48, textAlign: 'center', color: '#9ca3af' }}>
-                  No groups found.
+                  No Data Available
                 </td></tr>
               ) : filtered.map((row, idx) => (
                 <tr
@@ -724,7 +599,7 @@ export default function GroupListPage() {
         <PaginationBar
           page={page}
           pageSize={pageSize}
-          total={data?.total ?? 0}
+          total={totalRows}
           onPageChange={setPage}
           onPageSizeChange={size => { setPageSize(size); setPage(1); }}
         />

@@ -5,11 +5,12 @@ import type { CreateGroupRequest, UpdateGroupInfoRequest, ScreenPermissionSaveDt
 export function useGroupList(params: {
   search?: string; status?: string; sortBy?: string;
   sortOrder?: string; page?: number; pageSize?: number;
-}) {
+}, enabled = true) {
   return useQuery({
     queryKey: ['groups', params],
     queryFn: () => groupsApi.list(params),
     staleTime: 30_000,
+    enabled,
   });
 }
 

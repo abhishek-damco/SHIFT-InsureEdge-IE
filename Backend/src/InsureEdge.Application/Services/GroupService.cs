@@ -2,6 +2,7 @@
 // Implements US-001 through US-014 business logic.
 using InsureEdge.Application.DTOs.Group;
 using InsureEdge.Application.Interfaces;
+using InsureEdge.Application.Validation;
 using InsureEdge.Domain.Entities;
 using InsureEdge.Domain.Enums;
 
@@ -80,23 +81,11 @@ public class GroupService
     public Task<byte[]> ExportAsync(string format, string? search, string? statusFilter, List<long>? selectedIds)
         => _repo.ExportAsync(_tenant.ClientId, format, search, statusFilter, selectedIds);
 
-    // VR-001/VR-002/VR-003/VR-004
+    // VR-001/VR-002/VR-003/VR-004 — rules live in GroupValidator (QA UGM-08/12/13/14)
     private static void ValidateGroupInfo(string groupName, long groupLeader, string? groupEmailId, string? groupDesc)
     {
-        var errors = new List<string>();
-        if (string.IsNullOrWhiteSpace(groupName)) errors.Add("Group Name is required.");
-        if (groupName?.Length > 200) errors.Add("Group Name must not exceed 200 characters.");
-        if (groupLeader <= 0) errors.Add("Group Leader is required.");
-        if (!string.IsNullOrEmpty(groupEmailId) && !IsValidEmail(groupEmailId))
-            errors.Add("Group Email must be a valid email address.");
-        if (groupDesc?.Length > 500) errors.Add("Group Description must not exceed 500 characters.");
+        var errors = GroupValidator.Validate(groupName, groupLeader, groupEmailId, groupDesc);
         if (errors.Count > 0) throw new ValidationException(errors);
-    }
-
-    private static bool IsValidEmail(string email)
-    {
-        try { var _ = new System.Net.Mail.MailAddress(email); return true; }
-        catch { return false; }
     }
 }
 

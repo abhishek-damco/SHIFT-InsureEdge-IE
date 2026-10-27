@@ -133,7 +133,8 @@ public class GroupsController : ControllerBase
     {
         var screens = await _db.AppScreens
             .Include(s => s.Module)
-            .OrderBy(s => s.Module.ModuleName)
+            .OrderBy(s => s.Module.DisplayOrder)
+            .ThenBy(s => s.Module.ModuleName)
             .ThenBy(s => s.ScreenName)
             .Select(s => new {
                 screenId   = s.Id,

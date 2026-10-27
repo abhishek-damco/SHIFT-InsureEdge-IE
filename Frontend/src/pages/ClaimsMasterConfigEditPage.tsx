@@ -336,7 +336,7 @@ export default function ClaimsMasterConfigEditPage() {
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ ...TD, textAlign: 'center', color: '#94a3b8', padding: 40 }}>No records found.</td>
+                  <td colSpan={6} style={{ ...TD, textAlign: 'center', color: '#94a3b8', padding: 40 }}>No Data Available</td>
                 </tr>
               ) : filteredRows.map(row => (
                 <tr key={row.localId}>

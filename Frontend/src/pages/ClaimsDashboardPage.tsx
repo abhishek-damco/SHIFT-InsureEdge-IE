@@ -108,7 +108,7 @@ function ClaimsWidgetTable({
     <section style={{ border: '1px solid #d8e1ea', borderRadius: 6, padding: '14px 16px 16px', background: '#fff' }}>
       <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>{title}</h3>
       {rows.length === 0
-        ? <div style={{ textAlign: 'center', padding: '28px 0', color: '#94a3b8', fontSize: 13 }}>No data available</div>
+        ? <div style={{ textAlign: 'center', padding: '28px 0', color: '#94a3b8', fontSize: 13 }}>No Data Available</div>
         : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -157,7 +157,7 @@ function AlertCardList({
     <section style={{ border: '1px solid #d8e1ea', borderRadius: 6, padding: '14px 16px', background: '#fff' }}>
       <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>{title}</h3>
       {rows.length === 0
-        ? <div style={{ textAlign: 'center', padding: '28px 0', color: '#94a3b8', fontSize: 13 }}>No data available</div>
+        ? <div style={{ textAlign: 'center', padding: '28px 0', color: '#94a3b8', fontSize: 13 }}>No Data Available</div>
         : (
           <div style={{ display: 'grid', gap: 14 }}>
             {rows.map((row, i) => (
