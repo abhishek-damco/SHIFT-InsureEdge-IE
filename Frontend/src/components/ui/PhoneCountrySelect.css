@@ -1,0 +1,29 @@
+.phone-country-select { position: relative; display: flex; align-items: center; height: 36px; }
+.phone-country-trigger {
+  display: flex; align-items: center; gap: 4px; height: 100%; padding: 0 8px;
+  background: #eef1f5; border: none; border-right: 1px solid #c7ced6;
+  cursor: pointer; min-width: 44px;
+}
+.phone-country-trigger:hover { background: #e4e9f0; }
+.phone-country-trigger:disabled { cursor: default; }
+.phone-country-dropdown {
+  position: absolute; top: calc(100% + 3px); left: 0; z-index: 10000;
+  background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.14); min-width: 160px; overflow: hidden;
+}
+.phone-country-option {
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+  cursor: pointer; font-size: 13px; color: #374151; white-space: nowrap;
+}
+.phone-country-option:hover { background: #f0f4ff; }
+.phone-country-option.active { background: #e8eeff; color: #0B5AA0; font-weight: 500; }
+.flag-icon { display: inline-flex; align-items: center; flex-shrink: 0; }
+.flag-icon.flag-us {
+  width: 16px; height: 11px; border: 1px solid #c5ccd5;
+  background: linear-gradient(#244a92 0 0) 0 0 / 40% 54% no-repeat,
+    repeating-linear-gradient(to bottom, #c94040 0 1px, #fff 1px 2px);
+}
+.flag-icon.flag-ca {
+  width: 16px; height: 11px; border: 1px solid #c5ccd5;
+  background: linear-gradient(to right, #d52b1e 30%, #fff 30% 70%, #d52b1e 70%);
+}

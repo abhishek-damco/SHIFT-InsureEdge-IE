@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adjustersApi } from '../api/adjusters';
 import type { TempAdjusterLicenseDto, UpsertTempAdjusterRequest } from '../types/Adjuster';
+import SharedDatePicker from '../components/ui/DatePicker';
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -518,7 +519,7 @@ export default function AddAdjusterPage() {
             </Field>
             <Field label="Date of Birth" required error={e.dateOfBirth}>
               <div data-field-error={!!e.dateOfBirth || undefined}>
-                <DatePicker
+                <SharedDatePicker
                   value={form.dateOfBirth ?? ''}
                   onChange={v => { set('dateOfBirth', v); clr('dateOfBirth'); }}
                   hasError={!!e.dateOfBirth}

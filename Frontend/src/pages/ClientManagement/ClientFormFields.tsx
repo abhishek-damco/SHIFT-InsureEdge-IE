@@ -1,10 +1,12 @@
 // AI_GENERATED | HUMAN_VALIDATION_REQUIRED
 // Form atoms shared by the Client Information tab and the Office pop-up.
 import React, { useEffect, useRef, useState } from 'react';
+import DatePicker from '../../components/ui/DatePicker';
+import PhoneCountrySelect, { PHONE_COUNTRY_CA, PHONE_COUNTRY_US } from '../../components/ui/PhoneCountrySelect';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import type { ContactDto, SaveContactRequest } from '../../types/ClientManagement';
 import {
-  type Errors, digitsOnly, formatPhone, isContactEmpty, pickErrors, validateContact,
+  type Errors, digitsOnly, formatPhone, isContactEmpty, normalizeNorthAmericanPhone, pickErrors, validateContact,
 } from './validation';
 
 // ── Field shell ────────────────────────────────────────────────────────────────
@@ -43,6 +45,12 @@ export function TextInput({ value, onChange, error, disabled, maxLength, placeho
   return textarea
     ? <textarea {...common} rows={3} style={{ ...common.style, height: 'auto', resize: 'vertical' }} onChange={e => onChange(e.target.value)} />
     : <input {...common} onChange={e => onChange(e.target.value)} />;
+}
+
+export function YearPicker({ value, onChange, error, disabled }: {
+  value?: string; onChange: (value: string) => void; error?: string; disabled?: boolean;
+}) {
+  return <DatePicker mode="year" value={value ?? ''} onChange={onChange} hasError={Boolean(error)} disabled={disabled} placeholder="####" />;
 }
 
 export function Select({ value, onChange, options, disabled, error }: {
@@ -106,23 +114,22 @@ export function MultiSelect({ value, onChange, options, disabled }: {
 // Phone with US/Canada flag. Both are +1; the stored code distinguishes them ('+1' = US for legacy rows).
 export const PHONE_CC_US = '+1';
 export const PHONE_CC_CA = 'CA +1';
-export const phoneFlag = (cc?: string | null) => (cc === PHONE_CC_CA ? '🇨🇦' : '🇺🇸');
 export const formatPhoneWithFlag = (phone?: string | null, cc?: string | null) =>
-  phone ? `${phoneFlag(cc)} ${formatPhone(phone)}` : undefined;
+  phone ? `+1 ${formatPhone(phone)}` : undefined;
 
 export function PhoneInput({ value, cc, onChange, onCcChange, error, disabled }: {
   value?: string; cc?: string; onChange: (v: string) => void; onCcChange: (cc: string) => void; error?: string; disabled?: boolean;
 }) {
+  const selectedCc = cc === PHONE_CC_CA ? PHONE_CC_CA : PHONE_CC_US;
+
   return (
     <div className={`ph-wrap${error ? ' ph-wrap--err' : ''}`}>
-      <select className="ph-flag" value={cc === PHONE_CC_CA ? PHONE_CC_CA : PHONE_CC_US} disabled={disabled}
-        onChange={e => onCcChange(e.target.value)} aria-label="Phone country">
-        <option value={PHONE_CC_US}>🇺🇸 +1</option>
-        <option value={PHONE_CC_CA}>🇨🇦 +1</option>
-      </select>
+      <PhoneCountrySelect disabled={disabled}
+        value={selectedCc === PHONE_CC_CA ? PHONE_COUNTRY_CA : PHONE_COUNTRY_US}
+        onChange={country => onCcChange(country === PHONE_COUNTRY_CA ? PHONE_CC_CA : PHONE_CC_US)} />
       <input className={`ph-input fi${disabled ? ' fi--disabled' : ''}`} type="tel" value={formatPhone(value)} disabled={disabled}
         placeholder="(###) ###-####" maxLength={14} style={{ flex: 1, minWidth: 0 }}
-        onChange={e => onChange(digitsOnly(e.target.value, 10))} />
+        onChange={e => onChange(normalizeNorthAmericanPhone(e.target.value).slice(0, 10))} />
     </div>
   );
 }

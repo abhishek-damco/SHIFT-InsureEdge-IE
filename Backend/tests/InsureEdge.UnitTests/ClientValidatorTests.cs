@@ -99,6 +99,19 @@ public class ClientValidatorTests
         ClientValidator.IsValidExtension(ext).Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData("5551234567", "5551234567", true)]
+    [InlineData("(555) 123-4567", "5551234567", true)]
+    [InlineData("+1 (555) 123-4567", "5551234567", true)]
+    [InlineData("555123456", "555123456", false)]
+    [InlineData("+12 555 123 4567", "125551234567", false)]
+    public void Phone_normalization_supports_legacy_plus_one_without_accepting_other_lengths(
+        string input, string normalized, bool valid)
+    {
+        ClientValidator.NormalizePhone(input).Should().Be(normalized);
+        ClientValidator.IsValidPhone(input).Should().Be(valid);
+    }
+
     [Fact]
     public void Address_messages_use_postal_code_for_canada()
     {
@@ -138,6 +151,16 @@ public class ClientValidatorTests
             .Should().Be("Provide valid Email ID to continue");
     }
 
+    [Fact]
+    public void Contact_rejects_duplicate_primary_and_alternative_phone_after_normalization()
+    {
+        var contact = new SaveContactRequest("Alex Mercer", null, "Admin", "alex@example.com",
+            "+1 (555) 123-4567", "+1", null, "555-123-4567", "CA +1");
+
+        ClientValidator.ValidateContact(contact)
+            .Should().Be("Telephone and Alternative Telephone must be different");
+    }
+
     [Theory]
     [InlineData("Acme")]
     [InlineData("")]
@@ -153,6 +176,17 @@ public class ClientValidatorTests
     public void Client_info_seed_values_are_valid()
     {
         ClientValidator.ValidateInfo(ValidInfo()).Should().BeNull();
+    }
+
+    [Fact]
+    public void Year_business_started_is_optional_and_accepts_only_realistic_four_digit_years()
+    {
+        ClientValidator.ValidateInfo(ValidInfo() with { YearBusinessStarted = null }).Should().BeNull();
+        ClientValidator.ValidateInfo(ValidInfo() with { YearBusinessStarted = "1993" }).Should().BeNull();
+        ClientValidator.ValidateInfo(ValidInfo() with { YearBusinessStarted = "1599" })
+            .Should().Be("Provide valid Year Business Started to continue");
+        ClientValidator.ValidateInfo(ValidInfo() with { YearBusinessStarted = (DateTime.UtcNow.Year + 1).ToString() })
+            .Should().Be("Provide valid Year Business Started to continue");
     }
 
     private static SaveClientInfoRequest ValidInfo() => new(

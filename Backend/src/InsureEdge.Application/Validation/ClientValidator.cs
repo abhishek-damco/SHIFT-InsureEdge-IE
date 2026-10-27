@@ -32,7 +32,13 @@ public static partial class ClientValidator
 
     public static bool IsValidEmail(string? email) => email is { Length: <= 50 } && Email().IsMatch(email);
 
-    public static bool IsValidPhone(string? phone) => phone != null && phone.Count(char.IsAsciiDigit) == 10;
+    public static string NormalizePhone(string? phone)
+    {
+        var digits = new string((phone ?? "").Where(char.IsAsciiDigit).ToArray());
+        return digits.Length == 11 && digits[0] == '1' ? digits[1..] : digits;
+    }
+
+    public static bool IsValidPhone(string? phone) => phone != null && NormalizePhone(phone).Length == 10;
 
     public static bool IsValidExtension(int? ext) => ext is null or >= 0 and <= 999999;
 
@@ -55,7 +61,9 @@ public static partial class ClientValidator
         if (!IsValidFederalTaxId(r.FederalTaxId)) return Invalid("Federal Tax ID");
         if (r.OwnedBy?.Length > 75) return Invalid("Owned By");
         if (!Blank(r.NumberOfEmployees) && !(r.NumberOfEmployees!.Length <= 10 && r.NumberOfEmployees.All(char.IsAsciiDigit))) return Invalid("No. of Employees");
-        if (!Blank(r.YearBusinessStarted) && !(r.YearBusinessStarted!.Length == 4 && r.YearBusinessStarted.All(char.IsAsciiDigit))) return Invalid("Year Business Started");
+        if (!Blank(r.YearBusinessStarted) && (!(r.YearBusinessStarted!.Length == 4 && r.YearBusinessStarted.All(char.IsAsciiDigit))
+            || int.Parse(r.YearBusinessStarted) is < 1600 || int.Parse(r.YearBusinessStarted) > DateTime.UtcNow.Year))
+            return Invalid("Year Business Started");
         if (!Blank(r.EmailId) && !IsValidEmail(r.EmailId)) return Invalid("Email ID");
         if (!Blank(r.TelephoneNumber) && !IsValidPhone(r.TelephoneNumber)) return Invalid("Telephone");
         if (!IsValidExtension(r.Extension)) return Invalid("Extension");
@@ -80,6 +88,9 @@ public static partial class ClientValidator
         if (!Blank(r.TelephoneNumber) && !IsValidPhone(r.TelephoneNumber)) return Invalid("Telephone");
         if (!IsValidExtension(r.Extension)) return Invalid("Extension");
         if (!Blank(r.AltTelephoneNumber) && !IsValidPhone(r.AltTelephoneNumber)) return Invalid("Alternative Telephone");
+        if (!Blank(r.TelephoneNumber) && !Blank(r.AltTelephoneNumber)
+            && NormalizePhone(r.TelephoneNumber) == NormalizePhone(r.AltTelephoneNumber))
+            return "Telephone and Alternative Telephone must be different";
         return null;
     }
 

@@ -17,7 +17,7 @@ import type {
 } from '../types/ClientManagement';
 import { AddressEditor, type AddressForm, toAddressForm } from './ClientManagement/AddressEditor';
 import {
-  ContactListEditor, ExtensionInput, Field, MultiSelect, PHONE_CC_US, PhoneInput, Select, TextInput,
+  ContactListEditor, ExtensionInput, Field, MultiSelect, PHONE_CC_US, PhoneInput, Select, TextInput, YearPicker,
   formatPhoneWithFlag, toContactRequest, validateContactList,
 } from './ClientManagement/ClientFormFields';
 import { OfficeLocations } from './ClientManagement/OfficeLocations';
@@ -753,7 +753,7 @@ function ClientInfoTab({ client, onRefresh, showToast }: {
                 <Select value={form.estDirectWrittenPremium} onChange={up('estDirectWrittenPremium')} options={EST_DWP_OPTIONS} />
               </Field>
               <Field label="Year Business Started" error={errors.yearBusinessStarted}>
-                <TextInput value={form.yearBusinessStarted} onChange={v => patch({ yearBusinessStarted: digitsOnly(v, 4) })} maxLength={4} placeholder="####" error={errors.yearBusinessStarted} />
+                <YearPicker value={form.yearBusinessStarted} onChange={v => patch({ yearBusinessStarted: v })} error={errors.yearBusinessStarted} />
               </Field>
               <Field label="Client On-boarding Date">
                 <TextInput value={form.clientOnboardingDate} onChange={() => {}} readOnly />

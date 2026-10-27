@@ -1,6 +1,7 @@
 // AI_GENERATED | HUMAN_VALIDATION_REQUIRED
 using InsureEdge.Application.DTOs.Client;
 using InsureEdge.Application.Interfaces;
+using InsureEdge.Application.Validation;
 using InsureEdge.Domain.Entities;
 using InsureEdge.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -122,8 +123,8 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         c.YearBusinessStarted = req.YearBusinessStarted;
         c.BusinessDescription = req.BusinessDescription;
         c.EmailId = req.EmailId;
-        c.TelephoneNumber = req.TelephoneNumber;
-        c.TelephoneNumberCc = req.TelephoneNumberCc;
+        c.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        c.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
         c.Extension = req.Extension;
         c.ClientUrl = req.ClientUrl;
         c.Status = req.Status ?? c.Status;
@@ -214,11 +215,11 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         ct.Suffix = req.Suffix;
         ct.Title = req.Title;
         ct.EmailId = req.EmailId;
-        ct.TelephoneNumber = req.TelephoneNumber;
-        ct.TelephoneNumberCc = req.TelephoneNumberCc;
+        ct.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        ct.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
         ct.Extension = req.Extension;
-        ct.AltTelephoneNumber = req.AltTelephoneNumber;
-        ct.AltTelephoneNumberCc = req.AltTelephoneNumberCc;
+        ct.AltTelephoneNumber = NormalizeOptionalPhone(req.AltTelephoneNumber);
+        ct.AltTelephoneNumberCc = PhoneCountryCode(req.AltTelephoneNumber, req.AltTelephoneNumberCc);
     }
 
     // ── Office ─────────────────────────────────────────────────────────────────
@@ -254,11 +255,11 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         office.ContactSuffix = req.ContactSuffix;
         office.ContactTitle = req.ContactTitle;
         office.ContactEmail = req.ContactEmail;
-        office.ContactPhone = req.ContactPhone;
-        office.ContactPhoneCc = req.ContactPhoneCc;
+        office.ContactPhone = NormalizeOptionalPhone(req.ContactPhone);
+        office.ContactPhoneCc = PhoneCountryCode(req.ContactPhone, req.ContactPhoneCc);
         office.ContactExt = req.ContactExt;
-        office.ContactAltPhone = req.ContactAltPhone;
-        office.ContactAltPhoneCc = req.ContactAltPhoneCc;
+        office.ContactAltPhone = NormalizeOptionalPhone(req.ContactAltPhone);
+        office.ContactAltPhoneCc = PhoneCountryCode(req.ContactAltPhone, req.ContactAltPhoneCc);
 
         // Secondary contacts are replaced wholesale on every save (no unique index to collide with).
         office.SecondaryContacts.Clear();
@@ -272,11 +273,11 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
                 Suffix = s.Suffix,
                 Title = s.Title,
                 EmailId = s.EmailId,
-                TelephoneNumber = s.TelephoneNumber,
-                TelephoneNumberCc = s.TelephoneNumberCc,
+                TelephoneNumber = NormalizeOptionalPhone(s.TelephoneNumber),
+                TelephoneNumberCc = PhoneCountryCode(s.TelephoneNumber, s.TelephoneNumberCc),
                 Extension = s.Extension,
-                AltTelephoneNumber = s.AltTelephoneNumber,
-                AltTelephoneNumberCc = s.AltTelephoneNumberCc,
+                AltTelephoneNumber = NormalizeOptionalPhone(s.AltTelephoneNumber),
+                AltTelephoneNumberCc = PhoneCountryCode(s.AltTelephoneNumber, s.AltTelephoneNumberCc),
             });
         }
         await db.SaveChangesAsync();
@@ -323,8 +324,8 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         company.StateOfDomicile = req.StateOfDomicile;
         company.NaicCode = req.NaicCode;
         company.EmailId = req.EmailId;
-        company.TelephoneNumber = req.TelephoneNumber;
-        company.TelephoneNumberCc = req.TelephoneNumberCc;
+        company.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        company.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
         company.Extension = req.Extension;
         company.FederalTaxId = req.FederalTaxId;
         company.Url = req.Url;
@@ -392,13 +393,19 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         ct.Suffix = req.Suffix;
         ct.Title = req.Title;
         ct.EmailId = req.EmailId;
-        ct.TelephoneNumber = req.TelephoneNumber;
-        ct.TelephoneNumberCc = req.TelephoneNumberCc;
+        ct.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        ct.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
         ct.Extension = req.Extension;
-        ct.AltTelephoneNumber = req.AltTelephoneNumber;
-        ct.AltTelephoneNumberCc = req.AltTelephoneNumberCc;
+        ct.AltTelephoneNumber = NormalizeOptionalPhone(req.AltTelephoneNumber);
+        ct.AltTelephoneNumberCc = PhoneCountryCode(req.AltTelephoneNumber, req.AltTelephoneNumberCc);
         await db.SaveChangesAsync();
     }
+
+    private static string? NormalizeOptionalPhone(string? phone) =>
+        string.IsNullOrWhiteSpace(phone) ? null : ClientValidator.NormalizePhone(phone);
+
+    private static string? PhoneCountryCode(string? phone, string? countryCode) =>
+        string.IsNullOrWhiteSpace(phone) ? countryCode : countryCode ?? "+1";
 
     // ── Products ───────────────────────────────────────────────────────────────
     public async Task<List<ProductDto>> GetAllProductsAsync()

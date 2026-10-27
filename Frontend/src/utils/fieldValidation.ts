@@ -15,9 +15,17 @@ export const zipLabel = (country?: string) => (country === CANADA ? 'Postal Code
 export const isBlank = (v?: string | number | null) => v === undefined || v === null || String(v).trim() === '';
 export const digitsOnly = (v: string, max: number) => v.replace(/\D/g, '').slice(0, max);
 
+// Client phone values are stored as a 10-digit national number, while older rows
+// may still include the North American +1 prefix. Keep legacy values readable
+// without treating the calling code as part of the national number.
+export function normalizeNorthAmericanPhone(raw?: string | null): string {
+  const digits = (raw ?? '').replace(/\D/g, '');
+  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────────
 export function formatPhone(raw?: string | null): string {
-  const d = digitsOnly(raw ?? '', 10);
+  const d = normalizeNorthAmericanPhone(raw).slice(0, 10);
   if (!d) return '';
   if (d.length <= 3) return `(${d}`;
   if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
@@ -64,7 +72,7 @@ export const isValidZip = (zip: string, country?: string) =>
   country === CANADA ? CA_POSTAL.test(zip) : US_ZIP.test(zip);
 export const isValidName = (name: string) => name.length <= 50 && !name.startsWith(' ') && NAME_CHARS.test(name);
 export const isValidEmail = (email: string) => email.length <= 50 && EMAIL.test(email);
-export const isValidPhone = (phone: string) => digitsOnly(phone, 11).length === 10;
+export const isValidPhone = (phone: string) => normalizeNorthAmericanPhone(phone).length === 10;
 export const isValidExtension = (ext: string | number) => /^\d{1,6}$/.test(String(ext));
 
 // Inclusive range check on an MM-DD-YYYY string.
