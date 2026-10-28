@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { ModuleRow, PermissionInput } from '../../types/User'
 import { sanitizePermissions } from '../../api/users'
+import { Toggle } from '../../components/PermissionMatrix/PermissionMatrix'
 
 const PERM_COLS = [
   { key: 'isViewPermission',      label: 'View' },
@@ -15,6 +16,8 @@ const PERM_COLS = [
 ] as const
 
 type PermKey = (typeof PERM_COLS)[number]['key']
+
+const QUOTES_POLICIES = 'Quotes & Policies'
 
 interface Props {
   modules: ModuleRow[]
@@ -78,6 +81,15 @@ export default function PermissionsGrid({ modules, permissions, onChange, readOn
     onChange(sanitizePermissions(updated))
   }
 
+  // A module's switch is on when every screen holds exactly what that switch grants.
+  function moduleMatches(mod: ModuleRow, builder: (id: number) => PermissionInput) {
+    return mod.screens.length > 0 && mod.screens.every(s => {
+      const target = builder(s.id);
+      const p = getPerm(s.id);
+      return PERM_COLS.every(c => p[c.key] === target[c.key]);
+    });
+  }
+
   function toggleModule(moduleId: number) {
     setOpenMods(prev => {
       const next = new Set(prev)
@@ -112,7 +124,7 @@ export default function PermissionsGrid({ modules, permissions, onChange, readOn
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filteredModules.length === 0 && (
           <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
-            {modules.length === 0 ? 'Loading modules…' : 'No modules match your search.'}
+            {modules.length === 0 ? 'Loading modules…' : 'No Data Available'}
           </div>
         )}
 
@@ -138,30 +150,15 @@ export default function PermissionsGrid({ modules, permissions, onChange, readOn
                   <span style={{ fontWeight: 700, fontSize: 14, color: '#1d4ed8' }}>{mod.moduleName}</span>
                 </div>
 
-                {/* Read Only / All Access buttons — always visible but disabled in readOnly mode */}
-                <div style={{ display: 'flex', gap: 6, padding: '0 14px' }}>
-                  <button type="button"
-                    disabled={readOnly}
-                    onClick={() => !readOnly && applyToModule(mod.id, makeReadOnly)}
-                    style={{
-                      fontSize: 11, padding: '3px 10px', borderRadius: 4,
-                      border: '1px solid #d1d5db', background: '#fff',
-                      color: '#374151', cursor: readOnly ? 'not-allowed' : 'pointer',
-                      fontWeight: 500, opacity: readOnly ? 0.5 : 1,
-                    }}>
-                    Read Only
-                  </button>
-                  <button type="button"
-                    disabled={readOnly}
-                    onClick={() => !readOnly && applyToModule(mod.id, makeAllAccess)}
-                    style={{
-                      fontSize: 11, padding: '3px 10px', borderRadius: 4,
-                      border: '1px solid #0B5AA0', background: '#0B5AA0',
-                      color: '#fff', cursor: readOnly ? 'not-allowed' : 'pointer',
-                      fontWeight: 500, opacity: readOnly ? 0.5 : 1,
-                    }}>
-                    All Access
-                  </button>
+                {/* UM-06: Read Only / All Access are switches — a second click turns them off
+                    and clears the module's permissions (QA Q3 default, same as Group Rights). */}
+                <div style={{ display: 'flex', gap: 14, padding: '0 14px' }}>
+                  <Toggle label="Read Only" disabled={Boolean(readOnly)}
+                    checked={moduleMatches(mod, makeReadOnly)}
+                    onChange={on => applyToModule(mod.id, on ? makeReadOnly : emptyPerm)} />
+                  <Toggle label="All Access" disabled={Boolean(readOnly)}
+                    checked={moduleMatches(mod, makeAllAccess)}
+                    onChange={on => applyToModule(mod.id, on ? makeAllAccess : emptyPerm)} />
                 </div>
               </div>
 
@@ -182,6 +179,14 @@ export default function PermissionsGrid({ modules, permissions, onChange, readOn
                       </tr>
                     </thead>
                     <tbody>
+                      {/* UM-07: Quotes & Policies rows are the Individual screens (Business is hidden). */}
+                      {mod.moduleName === QUOTES_POLICIES && (
+                        <tr style={{ borderTop: '1px solid #f3f4f6', background: '#f9fafb' }}>
+                          <td colSpan={PERM_COLS.length + 1} style={{ padding: '6px 12px 6px 28px', fontWeight: 600, fontSize: 12, color: '#374151' }}>
+                            Individual
+                          </td>
+                        </tr>
+                      )}
                       {mod.screens.map(screen => {
                         const p = getPerm(screen.id)
                         return (

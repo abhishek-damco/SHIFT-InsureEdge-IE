@@ -234,7 +234,7 @@ function ModuleCard({
   );
 }
 
-function Toggle({ label, checked, disabled, onChange }: {
+export function Toggle({ label, checked, disabled, onChange }: {
   label: string; checked: boolean; disabled: boolean; onChange: (on: boolean) => void;
 }) {
   return (

@@ -14,12 +14,12 @@ namespace InsureEdge.API.Controllers;
 public class ProducersController(ProducerService producers) : ControllerBase
 {
     [HttpGet("by-intermediary/{intermediaryId:long}")]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.View)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.View)]
     public async Task<IActionResult> GetByIntermediary(long intermediaryId)
         => Ok(await producers.GetByIntermediaryAsync(intermediaryId));
 
     [HttpGet("{id:long}")]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.View)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.View)]
     public async Task<IActionResult> GetById(long id)
     {
         var producer = await producers.GetByIdAsync(id);
@@ -27,7 +27,7 @@ public class ProducersController(ProducerService producers) : ControllerBase
     }
 
     [HttpPost]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.Add)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.Add)]
     public async Task<IActionResult> Create([FromBody] SaveProducerRequest req)
     {
         var (success, error, producer) = await producers.CreateAsync(req);
@@ -36,7 +36,7 @@ public class ProducersController(ProducerService producers) : ControllerBase
     }
 
     [HttpPut("{id:long}")]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.Edit)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.Edit)]
     public async Task<IActionResult> Update(long id, [FromBody] SaveProducerRequest req)
     {
         var (success, error, producer) = await producers.UpdateAsync(id, req);
@@ -45,7 +45,7 @@ public class ProducersController(ProducerService producers) : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.Edit)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.Edit)]
     public async Task<IActionResult> Delete(long id)
     {
         var deleted = await producers.DeleteAsync(id);
@@ -56,7 +56,7 @@ public class ProducersController(ProducerService producers) : ControllerBase
     // onboarding-token flow as staff user setup). Requires the Producer to already have
     // an email on file. Never returns a password — no one, including staff, sets or sees it.
     [HttpPost("{id:long}/invite")]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.Edit)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.Edit)]
     public async Task<IActionResult> Invite(long id)
     {
         var (success, error) = await producers.InviteAsync(id);

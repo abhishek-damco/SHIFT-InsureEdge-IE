@@ -21,6 +21,27 @@ feature, fix a bug, or make a notable change — newest entry at the top.
 
 ---
 
+## 2026-10-28 — Abhishek
+
+**Area:** DB / Backend / Frontend
+
+User Management QA fixes (UM-01 – UM-15). Details and open items: `USER_MANAGEMENT_OPEN_ISSUES.md`.
+
+- `047_rights_screen_cleanup.sql`: `app_screen.is_visible`. User Groups, User and Distribution Management each have one "Landing Page" row. The Add/View grants are merged into it first; Business rows are hidden; Policy Summary is added. **Run with the API deploy**: the Intermediary/Producer APIs now check `DISTRIBUTIONLANDINGPAGE`.
+- `048_canada_reference.sql`: Canada and its provinces.
+- `UserValidator` (address lengths, Telephone ≠ Alternative Telephone) on user create/update. The Client contact duplicate-phone message now uses the same standard wording.
+- Shared `AddressFields`: uncheck confirmation, County hidden for Canada, Lat/Long disabled until manual entry, default length limits.
+- User form:
+  - DOB date picker
+  - Works Remotely defaults to No
+  - US default Country, with County
+  - Same as Office fixed
+  - Rights header with search, tooltip and helper text
+  - Read Only / All Access switches
+- User list column drag-to-reorder (shared `useColumnOrder` hook).
+
+---
+
 ## 2026-07-18 — Pragya
 
 **Area:** Backend + Frontend (Claims — Financials Worksheet; Distribution Management)

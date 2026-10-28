@@ -13,6 +13,7 @@ import { distributionApi } from '../../api/distribution';
 import api from '../../api/client';
 import { latLngToCell } from 'h3-js';
 import * as fv from '../../utils/fieldValidation';
+import { AddressUncheckConfirm } from '../../components/address/AddressUncheckConfirm';
 import type { HbisRatingOutputDto, HbTaxDetailsDto } from '../../types/Policy';
 import PhoneCountrySelect from '../../components/ui/PhoneCountrySelect';
 
@@ -1433,6 +1434,7 @@ function NameInsuredModal({ title, initial, onSave, onClose, locked }: {
     if (!v.insuredType) errs.insuredType = fv.required('Insured Type');
     fv.checkPhone(errs, 'telephone', v.telephone, 'Telephone Number', true);
     fv.checkPhone(errs, 'altTelephone', v.altTelephone, 'Alternative Telephone Number');
+    fv.checkPhonesDiffer(errs, 'telephone', 'altTelephone', v.telephone, v.altTelephone);
     fv.checkEmail(errs, 'email', v.email);
     return errs;
   }
@@ -1582,6 +1584,7 @@ function OrgModal({ title, initial, onSave, onClose, locked }: {
     fv.checkPhone(errs, 'telephone', v.telephone, 'Telephone Number', true);
     fv.checkExtension(errs, 'extension', v.extension);
     fv.checkPhone(errs, 'altTelephone', v.altTelephone, 'Alternative Telephone Number');
+    fv.checkPhonesDiffer(errs, 'telephone', 'altTelephone', v.telephone, v.altTelephone);
     fv.checkEmail(errs, 'email', v.email);
     return errs;
   }
@@ -2212,22 +2215,9 @@ function StepPolicyInfo({
         </div>
       </div>
 
-      {/* D1-02: same centered layout and button styles as the standard confirmation modals. */}
+      {/* D1-02 / UM-13: the standard uncheck confirmation shared with AddressFields. */}
       {showAddressModeConfirm && (
-        <div className="modal-overlay" onClick={() => setShowAddressModeConfirm(false)}>
-          <div className="modal modal-sm" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
-            <div style={{ textAlign: 'center', padding: '32px 16px' }}>
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Are you sure you want to continue?</div>
-              <div style={{ color: '#6b7280', fontSize: 12, marginBottom: 24 }}>
-                Unchecking Enter Address Manually will remove the address you entered. Please confirm if you want to proceed.
-              </div>
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                <button className="btn btn-outline" onClick={() => setShowAddressModeConfirm(false)}>No, Keep It</button>
-                <button className="btn btn-primary" onClick={continueGoogleAddressMode}>Yes, Continue</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AddressUncheckConfirm onCancel={() => setShowAddressModeConfirm(false)} onContinue={continueGoogleAddressMode} />
       )}
       {insuredModal && (
         <NameInsuredModal
@@ -5933,6 +5923,7 @@ export default function NewSubmission() {
     // Contact Information - optional, but must be well-formed when filled (D1-09 / D1-10)
     fv.checkPhone(errors, 'phone', form.phone, 'Telephone Number');
     fv.checkPhone(errors, 'altPhone', form.altPhone, 'Alternative Telephone Number');
+    fv.checkPhonesDiffer(errors, 'phone', 'altPhone', form.phone, form.altPhone);
     fv.checkExtension(errors, 'extension', form.extension);
     fv.checkEmail(errors, 'email', form.email);
 

@@ -1,5 +1,6 @@
 using Dapper;
 using InsureEdge.Application.Services;
+using InsureEdge.Application.Validation;
 using InsureEdge.API.Models;
 using InsureEdge.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -209,6 +210,7 @@ public class UsersController(
             string.IsNullOrWhiteSpace(req.LastName)  ||
             string.IsNullOrWhiteSpace(req.Email))
             return BadRequest(new { error = "firstName, lastName and email are required" });
+        if (ValidateUser(req) is { } invalid) return invalid;
 
         var conn = (NpgsqlConnection)dbContext.Database.GetDbConnection();
         await conn.OpenAsync();
@@ -295,6 +297,8 @@ public class UsersController(
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateUserRequest req)
     {
+        if (ValidateUser(req) is { } invalid) return invalid;
+
         var conn = (NpgsqlConnection)dbContext.Database.GetDbConnection();
         await conn.OpenAsync();
         using var tx = await conn.BeginTransactionAsync();
@@ -366,6 +370,14 @@ public class UsersController(
             await tx.RollbackAsync();
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    // QA UM-14/15: same rules as the Add/Edit User form.
+    private BadRequestObjectResult? ValidateUser(CreateUserRequest req)
+    {
+        var errors = UserValidator.Validate(req.AddressLine1, req.AddressLine2, req.City, req.County,
+            req.TelephoneNumber, req.AltTelephoneNumber);
+        return errors.Count > 0 ? BadRequest(new { error = errors[0], errors }) : null;
     }
 
     [HttpPatch("{id:int}/status")]

@@ -4,6 +4,7 @@ import { usersApi } from '../../api/users';
 import type { UserListItem } from '../../types/User';
 import StatCards from '../../components/StatCards/StatCards';
 import PaginationBar from '../../components/PaginationBar';
+import { useColumnOrder } from '../../hooks/useColumnOrder';
 import {
   ColumnFilterPopup, applyColumnFilters, distinctValues, hasActiveFilters, type ColumnFilters,
 } from '../../components/grid/ColumnFilter';
@@ -128,6 +129,8 @@ export default function UserManagementPage() {
   const [sortBy, setSortBy] = useState('first_name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [loading, setLoading] = useState(false);
+  // UM-02: drag a header onto another to reorder columns.
+  const { order: colOrder, dragging: draggingCol, headerProps } = useColumnOrder<ColKey>(ALL_COLS.map(c => c.key));
   const [visibleCols, setVisibleCols] = useState<Set<ColKey>>(
     new Set(ALL_COLS.map(c => c.key))
   );
@@ -202,7 +205,7 @@ export default function UserManagementPage() {
 
   const hasFilter = (key: ColKey) => !!filters[key];
 
-  const renderedCols = ALL_COLS.filter(c => visibleCols.has(c.key));
+  const renderedCols = colOrder.map(k => ALL_COLS.find(c => c.key === k)!).filter(c => visibleCols.has(c.key));
 
   const SortCaret = ({ col }: { col: string }) => {
     if (sortBy !== col) return null;
@@ -285,11 +288,12 @@ export default function UserManagementPage() {
                 {renderedCols.map(col => (
                   <th
                     key={col.key}
+                    {...headerProps(col.key)}
                     style={{
                       padding: '10px 12px', borderBottom: '2px solid #e5e7eb', borderRight: '1px solid #e5e7eb',
                       fontWeight: 600, fontSize: 12, color: '#374151', whiteSpace: 'nowrap',
-                      width: col.width, cursor: col.sortable ? 'pointer' : 'default',
-                      userSelect: 'none',
+                      width: col.width, cursor: col.sortable ? 'pointer' : 'grab',
+                      userSelect: 'none', opacity: draggingCol === col.key ? 0.5 : 1,
                     }}
                     onClick={() => {
                       if (col.key === 'userName') handleSort('first_name');

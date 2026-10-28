@@ -55,7 +55,7 @@ public class ReferenceController(InsureEdgeDbContext dbContext, ICurrentTenantSe
         var modules = (await conn.QueryAsync<ReferenceModuleRow>(
             "SELECT id, module_name FROM module ORDER BY sort_order")).ToList();
         var screens = (await conn.QueryAsync<ReferenceScreenRow>(
-            "SELECT id, screen_code, screen_name, module_id FROM app_screen ORDER BY id")).ToList();
+            "SELECT id, screen_code, screen_name, module_id FROM app_screen WHERE is_visible ORDER BY id")).ToList();
         foreach (var m in modules)
             m.Screens = screens.Where(s => s.ModuleId == m.Id).ToList();
         return Ok(modules);

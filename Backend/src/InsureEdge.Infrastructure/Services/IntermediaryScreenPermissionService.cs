@@ -11,6 +11,7 @@ public class IntermediaryScreenPermissionService(InsureEdgeDbContext db, ICurren
 {
     public async Task<List<ScreenListItemDto>> GetAllScreensAsync()
         => await db.AppScreens
+            .Where(s => s.IsVisible)
             .Include(s => s.Module)
             .OrderBy(s => s.Module!.ModuleName).ThenBy(s => s.ScreenName)
             .Select(s => new ScreenListItemDto(s.Id, s.ScreenCode, s.ScreenName, s.ModuleId, s.Module!.ModuleName))

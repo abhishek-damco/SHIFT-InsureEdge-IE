@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { usersApi, referenceApi, sanitizePermissions } from '../../api/users';
 import type { CountryRow, StateRow, GroupRow, ManagerRow, OptionRow, ModuleRow, PermissionInput } from '../../types/User';
 import SearchableSelect from '../../components/ui/SearchableSelect';
+import DatePicker from '../../components/ui/DatePicker';
+import { GROUP_RIGHTS_TOOLTIP as RIGHTS_TOOLTIP, InfoTooltip } from '../../components/GroupForm/GroupFormParts';
 import PermissionsGrid from './PermissionsGrid';
 import { AddressFields, type AddressFieldName, type AddressFieldsValue } from '../../components/address/AddressFields';
 import * as fv from '../../utils/fieldValidation';
@@ -27,7 +29,7 @@ interface FormState {
   sameAsOffice: boolean;
   googleSearch: string; enterManually: boolean;
   addressLine1: string; addressLine2: string;
-  country: string; state: string; city: string; zipCode: string;
+  country: string; state: string; city: string; county: string; zipCode: string;
   latitude: string; longitude: string;
   telephone: string; extension: string; altTelephone: string; email: string;
 }
@@ -36,11 +38,11 @@ const EMPTY: FormState = {
   status: true,
   firstName: '', middleName: '', lastName: '', suffix: '',
   dateOfBirth: '', gender: '',
-  isRemoteWorking: null, isManager: false,
+  isRemoteWorking: false, isManager: false, // UM-04: Works Remotely defaults to No, as in OutSystems
   officeLocation: '', groupId: '', department: '', reportsTo: '',
   sameAsOffice: false,
   googleSearch: '', enterManually: false,
-  addressLine1: '', addressLine2: '', country: '', state: '', city: '', zipCode: '',
+  addressLine1: '', addressLine2: '', country: '', state: '', city: '', county: '', zipCode: '',
   latitude: '', longitude: '',
   telephone: '', extension: '', altTelephone: '', email: '',
 };
@@ -62,13 +64,19 @@ function validateUser(f: FormState, countryName?: string): fv.Errors {
   // Q7 default: a non-manager must report to someone.
   if (!f.isManager) req('reportsTo', 'Reports To');
   req('addressLine1', 'Address Line 1');
+  fv.checkMaxLength(e, 'addressLine1', f.addressLine1, 'Address Line 1', fv.ADDRESS_LINE_MAX);
+  fv.checkMaxLength(e, 'addressLine2', f.addressLine2, 'Address Line 2', fv.ADDRESS_LINE_MAX);
   req('country', 'Country');
   if (fv.isBlank(f.state)) e.state = fv.required(fv.stateLabel(countryName));
   req('city', 'City');
+  fv.checkMaxLength(e, 'city', f.city, 'City', fv.CITY_MAX);
+  fv.checkMaxLength(e, 'county', f.county, 'County', fv.COUNTY_MAX);
   fv.checkZip(e, 'zipCode', f.zipCode, countryName);
   fv.checkPhone(e, 'telephone', f.telephone, 'Telephone Number', true);
   fv.checkExtension(e, 'extension', f.extension);
   fv.checkPhone(e, 'altTelephone', f.altTelephone, 'Alternative Telephone Number');
+  fv.checkPhonesDiffer(e, 'telephone', 'altTelephone', f.telephone, f.altTelephone);
+  if (f.sameAsOffice && fv.isBlank(f.officeLocation)) e.officeLocation = fv.required('Office Location');
   fv.checkEmail(e, 'email', f.email, 'Email ID', true);
   return e;
 }
@@ -103,36 +111,6 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #d1d5db', borderRadius: 4,
   outline: 'none', background: '#fff', boxSizing: 'border-box',
 };
-
-const disabledInputStyle: React.CSSProperties = {
-  ...inputStyle, background: '#f9fafb', color: '#9ca3af', cursor: 'not-allowed',
-};
-
-function StyledSelect({ value, onChange, options, placeholder, disabled }: {
-  value: string; onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  placeholder?: string; disabled?: boolean;
-}) {
-  return (
-    <div style={{ position: 'relative' }}>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        disabled={disabled}
-        style={{
-          ...(disabled ? disabledInputStyle : inputStyle),
-          appearance: 'none', paddingRight: 28,
-        }}
-      >
-        <option value="">{placeholder ?? 'Select...'}</option>
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#9ca3af' }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
-      </span>
-    </div>
-  );
-}
 
 function RadioGroup({ name, value, onChange, options }: {
   name: string; value: boolean | null; // null = neither option selected
@@ -179,6 +157,7 @@ export default function UserForm() {
   const [errors, setErrors] = useState<fv.Errors>({});
   const [submitted, setSubmitted] = useState(false);
   const [userCode, setUserCode] = useState('IE0001');
+  const [rightsSearch, setRightsSearch] = useState('');
 
   useEffect(() => {
     referenceApi.countries().then(setCountries).catch(() => {});
@@ -200,6 +179,38 @@ export default function UserForm() {
     if (form.country) referenceApi.states(form.country).then(setStates).catch(() => setStates([]));
     else setStates([]);
   }, [form.country]);
+
+  // UM-12: United States is the default Country on a new user.
+  useEffect(() => {
+    if (isEdit || !countries.some(c => c.code === 'US')) return;
+    setForm(f => (f.country ? f : { ...f, country: 'US' }));
+  }, [countries, isEdit]);
+
+  // UM-12: "Same as Office Location" copies the office address, and follows a later change
+  // of Office Location. Client addresses store Country/State as names, so the country is
+  // mapped to its code here; the state name is mapped by the effect below once states load.
+  useEffect(() => {
+    if (!form.sameAsOffice || !form.officeLocation) return;
+    let cancelled = false;
+    referenceApi.officeAddress(form.officeLocation).then(addr => {
+      if (cancelled || !addr) return;
+      const country = countries.find(c => c.code === addr.countryCode || c.name === addr.countryCode)?.code ?? addr.countryCode ?? '';
+      setForm(f => {
+        const next = {
+          ...f,
+          addressLine1: addr.addressLine1 ?? '', addressLine2: addr.addressLine2 ?? '',
+          country, state: addr.stateCode ?? '', city: addr.city ?? '', county: addr.county ?? '',
+          zipCode: addr.zipCode ?? '',
+          latitude: addr.latitude != null ? String(addr.latitude) : '',
+          longitude: addr.longitude != null ? String(addr.longitude) : '',
+        };
+        if (submitted) setErrors(validateUser(next, countries.find(c => c.code === next.country)?.name ?? next.country));
+        return next;
+      });
+    }).catch(() => { /* best-effort */ });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.sameAsOffice, form.officeLocation, countries]);
 
   // Google returns a state name; User Management persists the reference-state code.
   // Normalize only after the selected country's options have been loaded.
@@ -254,7 +265,7 @@ export default function UserForm() {
         googleSearch: '', enterManually: false,
         addressLine1: u.addressLine1 ?? '', addressLine2: u.addressLine2 ?? '',
         country: u.countryCode ?? '', state: u.stateCode ?? '',
-        city: u.city ?? '', zipCode: u.zipCode ?? '',
+        city: u.city ?? '', county: u.county ?? '', zipCode: u.zipCode ?? '',
         latitude: u.latitude != null ? String(u.latitude) : '',
         longitude: u.longitude != null ? String(u.longitude) : '',
         telephone: u.telephoneNumber ?? '', extension: u.extension ?? '',
@@ -295,6 +306,7 @@ export default function UserForm() {
         addressLine1: form.addressLine1 || undefined, addressLine2: form.addressLine2 || undefined,
         countryCode: form.country || undefined, stateCode: form.state || undefined,
         city: form.city || undefined, zipCode: form.zipCode || undefined,
+        county: form.county || undefined,
         latitude: form.latitude ? Number(form.latitude) : undefined,
         longitude: form.longitude ? Number(form.longitude) : undefined,
         telephoneNumber: form.telephone || undefined, extension: form.extension || undefined,
@@ -318,22 +330,23 @@ export default function UserForm() {
   const addressValue: AddressFieldsValue = {
     googleSearch: form.googleSearch, enterManually: form.enterManually,
     addressLine1: form.addressLine1, addressLine2: form.addressLine2,
-    country: form.country, state: form.state, city: form.city, county: '', zipCode: form.zipCode,
+    country: form.country, state: form.state, city: form.city, county: form.county, zipCode: form.zipCode,
     latitude: form.latitude, longitude: form.longitude,
   };
   const setAddress = (field: AddressFieldName, value: string | boolean) => {
     if (field === 'country') {
       const country = countryOpts.find(option => option.value === value || option.label === value)?.value ?? String(value);
-      set('country', country); return;
+      set('country', country);
+      if (countryName(country) === fv.CANADA) set('county', ''); // §2: no County in Canada
+      return;
     }
     if (field === 'state') {
       const state = stateOpts.find(option => option.value === value || option.label === value)?.value ?? String(value);
       set('state', state); return;
     }
-    if (field === 'county') return;
     const userField: Partial<Record<AddressFieldName, keyof FormState>> = {
       googleSearch: 'googleSearch', enterManually: 'enterManually', addressLine1: 'addressLine1', addressLine2: 'addressLine2',
-      city: 'city', zipCode: 'zipCode', latitude: 'latitude', longitude: 'longitude',
+      city: 'city', county: 'county', zipCode: 'zipCode', latitude: 'latitude', longitude: 'longitude',
     };
     const userKey = userField[field];
     if (userKey) set(userKey, value as never);
@@ -455,14 +468,14 @@ export default function UserForm() {
               <div style={row2}>
                 <div>
                   <Label>Date of Birth</Label>
-                  {/* D1-19/20: MM-DD-YYYY text input, 01-01-1900 to today */}
-                  <input value={form.dateOfBirth} onChange={e => set('dateOfBirth', fv.formatDateInput(e.target.value))}
-                    placeholder="MM-DD-YYYY" inputMode="numeric" maxLength={10} style={fieldStyle('dateOfBirth')} />
+                  {/* UM-03 / D1-19/20: calendar picker or typed MM-DD-YYYY, 01-01-1900 to today */}
+                  <DatePicker value={form.dateOfBirth} onChange={v => set('dateOfBirth', fv.formatDateInput(v))}
+                    hasError={Boolean(errors.dateOfBirth)} />
                   <FieldError msg={errors.dateOfBirth} />
                 </div>
                 <div>
                   <Label required>Gender</Label>
-                  <StyledSelect value={form.gender} onChange={v => set('gender', v)} placeholder="Select"
+                  <SearchableSelect value={form.gender} onChange={v => set('gender', v)} placeholder="Select..."
                     options={GENDERS.map(g => ({ value: g, label: g }))} />
                   <FieldError msg={errors.gender} />
                 </div>
@@ -500,7 +513,7 @@ export default function UserForm() {
                 <div>
                   {/* D1-22: mandatory when the user is not a manager */}
                   <Label required={!form.isManager}>Reports To</Label>
-                  <StyledSelect value={form.reportsTo} onChange={v => set('reportsTo', v)} placeholder="Select..." options={managerOpts} />
+                  <SearchableSelect value={form.reportsTo} onChange={v => set('reportsTo', v)} placeholder="Select..." options={managerOpts} />
                   <FieldError msg={errors.reportsTo} />
                 </div>
               </div>
@@ -518,26 +531,11 @@ export default function UserForm() {
                 {/* Same as office */}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer' }}>
                   <input type="checkbox" checked={form.sameAsOffice}
-                    onChange={async e => {
-                      const checked = e.target.checked;
-                      set('sameAsOffice', checked);
-                      if (checked && form.officeLocation) {
-                        try {
-                          const addr = await referenceApi.officeAddress(form.officeLocation);
-                          if (addr) {
-                            setForm(f => ({
-                              ...f, sameAsOffice: true,
-                              addressLine1: addr.addressLine1 ?? '',
-                              addressLine2: addr.addressLine2 ?? '',
-                              country: addr.countryCode ?? '',
-                              state: addr.stateCode ?? '',
-                              city: addr.city ?? '',
-                              zipCode: addr.zipCode ?? '',
-                              latitude: addr.latitude != null ? String(addr.latitude) : '',
-                              longitude: addr.longitude != null ? String(addr.longitude) : '',
-                            }));
-                          }
-                        } catch { /* best-effort */ }
+                    onChange={e => {
+                      set('sameAsOffice', e.target.checked);
+                      // No office chosen yet: say so straight away rather than doing nothing.
+                      if (e.target.checked && !form.officeLocation) {
+                        setErrors(prev => ({ ...prev, officeLocation: fv.required('Office Location') }));
                       }
                     }}
                     style={{ accentColor: '#0B5AA0', width: 14, height: 14 }} />
@@ -550,7 +548,7 @@ export default function UserForm() {
                   countryOptions={countryOpts}
                   stateOptions={stateOpts}
                   disabled={addrDisabled}
-                  showCounty={false}
+                  countyRequired={false}
                   coordinatesReadOnly={false}
                   errors={errors}
                   stateLabel={fv.stateLabel(countryName(form.country))}
@@ -622,13 +620,28 @@ export default function UserForm() {
 
         {/* User Rights */}
         <div style={{ ...card, marginBottom: 0 }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>User Rights</span>
-            {permissionsFromGroup && (
-              <span style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 999, padding: '3px 10px' }}>
-                Permissions inherited from group — read only
-              </span>
-            )}
+          {/* UM-11: search on the header row, info tooltip, helper text below. */}
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>User – Rights</span>
+                <InfoTooltip text={RIGHTS_TOOLTIP} />
+                {permissionsFromGroup && (
+                  <span style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 999, padding: '3px 10px', marginLeft: 6 }}>
+                    Permissions inherited from group — read only
+                  </span>
+                )}
+              </div>
+              <div style={{ position: 'relative', width: 300, maxWidth: '100%' }}>
+                <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 14 }}>⌕</span>
+                <input value={rightsSearch} onChange={e => setRightsSearch(e.target.value)}
+                  placeholder="Enter module or feature name" aria-label="Search rights"
+                  style={{ ...inputStyle, paddingLeft: 28 }} />
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+              You can grant access to the system module and their sub-module for the user
+            </div>
           </div>
           <div style={{ padding: 20 }}>
             <PermissionsGrid
@@ -636,6 +649,7 @@ export default function UserForm() {
               permissions={permissions}
               onChange={setPermissions}
               readOnly={permissionsFromGroup}
+              searchQuery={rightsSearch}
             />
           </div>
         </div>

@@ -4,7 +4,7 @@
 import { CANADA_PROVINCES, US_STATES } from '../DistributionManagement/IntermediaryReferenceData';
 import type { SaveClientInfoRequest, SaveContactRequest } from '../../types/ClientManagement';
 import {
-  CANADA, type Errors, digitsOnly, invalid, isBlank as blank, isValidEmail, isValidName, isValidPhone,
+  CANADA, type Errors, checkPhonesDiffer, digitsOnly, invalid, isBlank as blank, isValidEmail, isValidName, isValidPhone,
   isValidZip, normalizeNorthAmericanPhone, required, stateLabel, zipLabel,
 } from '../../utils/fieldValidation';
 
@@ -90,9 +90,7 @@ export function validateContact(c: SaveContactRequest): Errors {
   if (!blank(c.telephoneNumber) && !isValidPhone(c.telephoneNumber!)) e.telephoneNumber = invalid('Telephone');
   if (c.extension != null && !/^\d{1,6}$/.test(String(c.extension))) e.extension = invalid('Extension');
   if (!blank(c.altTelephoneNumber) && !isValidPhone(c.altTelephoneNumber!)) e.altTelephoneNumber = invalid('Alternative Telephone');
-  if (!blank(c.telephoneNumber) && !blank(c.altTelephoneNumber)
-      && normalizeNorthAmericanPhone(c.telephoneNumber) === normalizeNorthAmericanPhone(c.altTelephoneNumber))
-    e.altTelephoneNumber = 'Telephone and Alternative Telephone must be different';
+  checkPhonesDiffer(e, 'telephoneNumber', 'altTelephoneNumber', c.telephoneNumber, c.altTelephoneNumber);
   return e;
 }
 

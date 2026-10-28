@@ -10,6 +10,7 @@ import { useGroupList } from '../hooks/useGroups';
 import { groupsApi } from '../api/groups';
 import { usePermissions } from '../contexts/PermissionContext';
 import type { GroupListDto } from '../types/Group';
+import { useColumnOrder } from '../hooks/useColumnOrder';
 import {
   ColumnFilterPopup, applyColumnFilters, distinctValues, hasActiveFilters, type ColumnFilters,
 } from '../components/grid/ColumnFilter';
@@ -239,16 +240,7 @@ export default function GroupListPage() {
     });
 
   // QA UGM-02: user-defined column order (drag a header onto another).
-  const [colOrder, setColOrder] = useState<ColKey[]>(ALL_COLS.map(c => c.key));
-  const [dragCol, setDragCol] = useState<ColKey | null>(null);
-  const moveCol = (from: ColKey, to: ColKey) => {
-    if (from === to) return;
-    setColOrder(prev => {
-      const next = prev.filter(k => k !== from);
-      next.splice(next.indexOf(to), 0, from);
-      return next;
-    });
-  };
+  const { order: colOrder, dragging: dragCol, headerProps } = useColumnOrder<ColKey>(ALL_COLS.map(c => c.key));
 
   // Column filters (QA UGM-05). The server pages the list, so filtering only the current page
   // missed matches on other pages; while a filter is open or applied, load every row instead
@@ -459,12 +451,7 @@ export default function GroupListPage() {
                 {renderedCols.map(col => (
                   <th
                     key={col.key}
-                    draggable
-                    title="Drag to reorder"
-                    onDragStart={e => { setDragCol(col.key); e.dataTransfer.effectAllowed = 'move'; }}
-                    onDragOver={e => { if (dragCol) e.preventDefault(); }}
-                    onDrop={e => { e.preventDefault(); if (dragCol) moveCol(dragCol, col.key); setDragCol(null); }}
-                    onDragEnd={() => setDragCol(null)}
+                    {...headerProps(col.key)}
                     style={{
                       padding: '10px 12px', borderBottom: '2px solid #e5e7eb', borderRight: '1px solid #e5e7eb',
                       fontWeight: 600, fontSize: 12, color: '#374151', whiteSpace: 'nowrap',

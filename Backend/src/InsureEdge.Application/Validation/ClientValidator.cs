@@ -90,7 +90,7 @@ public static partial class ClientValidator
         if (!Blank(r.AltTelephoneNumber) && !IsValidPhone(r.AltTelephoneNumber)) return Invalid("Alternative Telephone");
         if (!Blank(r.TelephoneNumber) && !Blank(r.AltTelephoneNumber)
             && NormalizePhone(r.TelephoneNumber) == NormalizePhone(r.AltTelephoneNumber))
-            return "Telephone and Alternative Telephone must be different";
+            return UserValidator.TelephoneSameAsAlt; // QA UM-15 standard wording
         return null;
     }
 

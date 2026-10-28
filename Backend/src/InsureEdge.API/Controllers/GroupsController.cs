@@ -132,6 +132,7 @@ public class GroupsController : ControllerBase
     public async Task<IActionResult> GetScreens()
     {
         var screens = await _db.AppScreens
+            .Where(s => s.IsVisible)
             .Include(s => s.Module)
             .OrderBy(s => s.Module.DisplayOrder)
             .ThenBy(s => s.Module.ModuleName)

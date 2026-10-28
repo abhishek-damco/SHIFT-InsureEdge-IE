@@ -177,6 +177,7 @@ public class InsureEdgeDbContext : DbContext
             e.Property(x => x.ScreenName).HasMaxLength(100);
             e.Ignore(x => x.IsActive);
             e.Ignore(x => x.DisplayOrder);
+            e.Property(x => x.IsVisible).HasColumnName("is_visible");
             e.HasOne(x => x.Module).WithMany(m => m.Screens).HasForeignKey(x => x.ModuleId);
         });
 

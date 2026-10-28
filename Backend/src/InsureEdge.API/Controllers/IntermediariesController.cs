@@ -26,7 +26,7 @@ public class IntermediariesController(IntermediaryService intermediaries) : Cont
     }
 
     [HttpPost]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.Add)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.Add)]
     public async Task<IActionResult> Create([FromBody] SaveIntermediaryRequest req)
     {
         var created = await intermediaries.CreateAsync(req);
@@ -34,7 +34,7 @@ public class IntermediariesController(IntermediaryService intermediaries) : Cont
     }
 
     [HttpPut("{id:long}")]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.Edit)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.Edit)]
     public async Task<IActionResult> Update(long id, [FromBody] SaveIntermediaryRequest req)
     {
         var updated = await intermediaries.UpdateAsync(id, req);
@@ -42,7 +42,7 @@ public class IntermediariesController(IntermediaryService intermediaries) : Cont
     }
 
     [HttpDelete("{id:long}")]
-    [Permission("DIST_ADDINTERMEDIARY", PermissionType.Edit)]
+    [Permission("DISTRIBUTIONLANDINGPAGE", PermissionType.Edit)]
     public async Task<IActionResult> Delete(long id)
     {
         var deleted = await intermediaries.DeleteAsync(id);

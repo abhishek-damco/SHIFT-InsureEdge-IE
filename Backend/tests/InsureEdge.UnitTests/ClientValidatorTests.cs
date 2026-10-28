@@ -158,7 +158,7 @@ public class ClientValidatorTests
             "+1 (555) 123-4567", "+1", null, "555-123-4567", "CA +1");
 
         ClientValidator.ValidateContact(contact)
-            .Should().Be("Telephone and Alternative Telephone must be different");
+            .Should().Be(UserValidator.TelephoneSameAsAlt);
     }
 
     [Theory]

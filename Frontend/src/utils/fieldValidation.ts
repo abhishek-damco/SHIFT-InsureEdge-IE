@@ -9,7 +9,15 @@ export const CANADA = 'Canada';
 export const required = (label: string) => `Provide ${label} to continue`;
 export const invalid = (label: string) => `Provide valid ${label} to continue`;
 
-export const stateLabel = (country?: string) => (country === CANADA ? 'Province' : 'State');
+// QA UM-14: address limits (Backend Validation/UserValidator.cs mirrors these).
+export const ADDRESS_LINE_MAX = 500;
+export const CITY_MAX = 50;
+export const COUNTY_MAX = 50;
+
+// QA UM-13: confirmation shown when "Enter Address Manually" is unchecked.
+export const ADDRESS_UNCHECK_MSG = 'Unchecking this option will remove the address you entered. Do you want to continue?';
+
+export const stateLabel =(country?: string) => (country === CANADA ? 'Province' : 'State');
 export const zipLabel = (country?: string) => (country === CANADA ? 'Postal Code' : 'Zip Code');
 
 export const isBlank = (v?: string | number | null) => v === undefined || v === null || String(v).trim() === '';
@@ -104,6 +112,19 @@ export function checkZip(e: Errors, key: string, value: string | undefined, coun
   const label = zipLabel(country);
   if (isBlank(value)) { if (isRequired) e[key] = required(label); }
   else if (!isValidZip(value!.trim(), country)) e[key] = invalid(label);
+}
+
+export function checkMaxLength(e: Errors, key: string, value: string | undefined | null, label: string, max: number) {
+  if ((value?.length ?? 0) > max) e[key] = invalid(label);
+}
+
+// QA UM-15 (standard across the app): the two numbers must differ. Compares national
+// digits, so "(555) 123-4567" and "5551234567" count as the same. Format errors win.
+export function checkPhonesDiffer(e: Errors, telKey: string, altKey: string, tel?: string | null, alt?: string | null) {
+  const a = normalizeNorthAmericanPhone(tel);
+  if (!a || a !== normalizeNorthAmericanPhone(alt)) return;
+  e[telKey] ??= 'Telephone Number should not be same as Alternative Telephone Number';
+  e[altKey] ??= 'Alternative Telephone Number should not be same as Telephone Number';
 }
 
 // Server returns 400 { error } (or { message }); surface it instead of a generic message.
