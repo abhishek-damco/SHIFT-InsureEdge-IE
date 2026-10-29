@@ -16,6 +16,7 @@ import * as fv from '../../utils/fieldValidation';
 import { AddressUncheckConfirm } from '../../components/address/AddressUncheckConfirm';
 import type { HbisRatingOutputDto, HbTaxDetailsDto } from '../../types/Policy';
 import PhoneCountrySelect from '../../components/ui/PhoneCountrySelect';
+import DatePicker from '../../components/ui/DatePicker';
 
 // Hex Zone IDs (HexCat Provided Risk Information Location) — derived from the risk
 // location's lat/long via H3. LR (Low Resolution, res 4) keys hb_rater_lr_hexzones;
@@ -373,11 +374,12 @@ function todayFormatted(): string {
 
 function addOneYear(dateStr: string): string {
   if (!dateStr) return '';
-  const [day, month, year] = dateStr.split('-');
+  // Dates are MM-DD-YYYY (the old code read them as DD-MM-YYYY).
+  const [month, day, year] = dateStr.split('-');
   if (!day || !month || !year) return '';
   const d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
   d.setFullYear(d.getFullYear() + 1);
-  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
 }
 
 const DEFAULT_LANDING_FORM: NewSubmissionLandingForm = {
@@ -410,6 +412,8 @@ function NewSubmissionLanding({
   intermediaryOptions,
   producerOptions,
   isProducer,
+  stateOptions,
+  errors = {},
 }: {
   form: NewSubmissionLandingForm;
   setForm: React.Dispatch<React.SetStateAction<NewSubmissionLandingForm>>;
@@ -420,9 +424,12 @@ function NewSubmissionLanding({
   intermediaryOptions: DropdownOption[];
   producerOptions: DropdownOption[];
   isProducer?: boolean;
+  stateOptions: string[];
+  errors?: Record<string, string>;
 }) {
   const intermediaryNames = intermediaryOptions.map(option => option.name);
   const producerNames = producerOptions.map(option => option.name);
+  const err = (key: string) => errors[key] ? <div className="field-error">{errors[key]}</div> : null;
 
   function handleIntermediaryChange(value: string) {
     const selected = intermediaryOptions.find(option => option.name === value);
@@ -456,9 +463,11 @@ function NewSubmissionLanding({
               </Field>
               <Field label="Intermediary" required>
                 <FSelect value={form.brokerageFirm} onChange={handleIntermediaryChange} options={intermediaryNames} disabled={isProducer} />
+                {err('brokerageFirm')}
               </Field>
               <Field label="Producer Name" required>
                 <FSelect value={form.producerName} onChange={handleProducerChange} options={producerNames} disabled={!form.brokerageFirm || producerNames.length === 0} />
+                {err('producerName')}
               </Field>
             </div>
           </div>
@@ -470,7 +479,8 @@ function NewSubmissionLanding({
                 <div style={{ display: 'flex', gap: 20, marginTop: 6 }}>
                   {NEW_SUBMISSION_POLICY_TYPES.map(option => (
                     <label key={option} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                      <input type="radio" name="typeOfPolicy" checked={form.typeOfPolicy === option} onChange={() => setForm(prev => ({ ...prev, typeOfPolicy: option }))} />
+                      {/* QP-07: always Single. */}
+                      <input type="radio" name="typeOfPolicy" checked={form.typeOfPolicy === option} disabled onChange={() => setForm(prev => ({ ...prev, typeOfPolicy: option }))} />
                       {option}
                     </label>
                   ))}
@@ -480,7 +490,8 @@ function NewSubmissionLanding({
                 <div style={{ display: 'flex', gap: 20, marginTop: 6 }}>
                   {NEW_SUBMISSION_QUOTE_TYPES.map(option => (
                     <label key={option} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                      <input type="radio" name="typeOfQuote" checked={form.typeOfQuote === option} onChange={() => setForm(prev => ({ ...prev, typeOfQuote: option }))} />
+                      {/* QP-08: always Quick. */}
+                      <input type="radio" name="typeOfQuote" checked={form.typeOfQuote === option} disabled onChange={() => setForm(prev => ({ ...prev, typeOfQuote: option }))} />
                       {option}
                     </label>
                   ))}
@@ -494,10 +505,12 @@ function NewSubmissionLanding({
                 <FSelect value={form.insuranceType} onChange={v => setForm(prev => ({ ...prev, insuranceType: v }))} options={NEW_SUBMISSION_INSURANCE_TYPES} />
               </Field>
               <Field label="Country" required>
-                <FSelect value={form.country} onChange={v => setForm(prev => ({ ...prev, country: v }))} options={['United States']} />
+                {/* QP-09: always United States. */}
+                <FSelect value={form.country} onChange={v => setForm(prev => ({ ...prev, country: v }))} options={['United States']} disabled />
               </Field>
               <Field label="Effective Date" required>
-                <Input value={form.effectiveDate} onChange={v => setForm(prev => ({ ...prev, effectiveDate: v }))} />
+                <DatePicker value={form.effectiveDate} onChange={v => setForm(prev => ({ ...prev, effectiveDate: v }))} hasError={Boolean(errors.effectiveDate)} />
+                {err('effectiveDate')}
               </Field>
             </div>
             <div className="form-grid-3" style={{ marginTop: 16 }}>
@@ -508,7 +521,10 @@ function NewSubmissionLanding({
                 <FSelect value={form.subProduct} onChange={v => setForm(prev => ({ ...prev, subProduct: v }))} options={['SuperPerils']} />
               </Field>
               <Field label="Primary State" required>
-                <FSelect value={form.primaryState} onChange={v => setForm(prev => ({ ...prev, primaryState: v }))} options={ALL_STATES} placeholder="Select" />
+                <FSelect value={form.primaryState} onChange={v => setForm(prev => ({ ...prev, primaryState: v }))} options={stateOptions} placeholder="Select" disabled={stateOptions.length === 0} />
+                {stateOptions.length === 0
+                  ? <div className="field-error">No states available for this Intermediary</div>
+                  : err('primaryState')}
               </Field>
             </div>
           </div>
@@ -1429,8 +1445,11 @@ function NameInsuredModal({ title, initial, onSave, onClose, locked }: {
 
   function computeErrors(v: typeof vals): Record<string, string> {
     const errs: Record<string, string> = {};
-    if (!v.firstName.trim()) errs.firstName = fv.required('First Name');
-    if (!v.lastName.trim()) errs.lastName = fv.required('Last Name');
+    // QP-21: app-wide name rule; QP-20: DBA up to 75 characters.
+    fv.checkName(errs, 'firstName', v.firstName, 'First Name', true);
+    fv.checkName(errs, 'middleName', v.middleName, 'Middle Name');
+    fv.checkName(errs, 'lastName', v.lastName, 'Last Name', true);
+    fv.checkMaxLength(errs, 'dbaName', v.dbaName, 'DBA Name', fv.ORG_NAME_MAX);
     if (!v.insuredType) errs.insuredType = fv.required('Insured Type');
     fv.checkPhone(errs, 'telephone', v.telephone, 'Telephone Number', true);
     fv.checkPhone(errs, 'altTelephone', v.altTelephone, 'Alternative Telephone Number');
@@ -1472,6 +1491,7 @@ function NameInsuredModal({ title, initial, onSave, onClose, locked }: {
             <div className="form-group">
               <label>Middle Name / Initial</label>
               <input value={vals.middleName} onChange={e => sv('middleName', e.target.value)} disabled={locked} />
+              {errors.middleName && <div className="field-error">{errors.middleName}</div>}
             </div>
             <div className="form-group">
               <label><span style={{ color: '#dc2626' }}>* </span>Last Name</label>
@@ -1545,6 +1565,7 @@ function NameInsuredModal({ title, initial, onSave, onClose, locked }: {
             <div className="form-group">
               <label>DBA Name</label>
               <input value={vals.dbaName} onChange={e => sv('dbaName', e.target.value)} disabled={locked} />
+              {errors.dbaName && <div className="field-error">{errors.dbaName}</div>}
             </div>
           </div>
         </div>
@@ -1577,10 +1598,13 @@ function OrgModal({ title, initial, onSave, onClose, locked }: {
 
   function computeErrors(v: typeof vals): Record<string, string> {
     const errs: Record<string, string> = {};
+    // QP-20: Organization Name up to 75 characters (any characters); QP-21: name rule.
     if (!v.orgName.trim()) errs.orgName = fv.required('Organization Name');
+    else fv.checkMaxLength(errs, 'orgName', v.orgName, 'Organization Name', fv.ORG_NAME_MAX);
     if (!v.orgType) errs.orgType = fv.required('Organization Type');
-    if (!v.contactFirstName.trim()) errs.contactFirstName = fv.required('First Name');
-    if (!v.contactLastName.trim()) errs.contactLastName = fv.required('Last Name');
+    fv.checkName(errs, 'contactFirstName', v.contactFirstName, 'First Name', true);
+    fv.checkName(errs, 'contactMiddleName', v.contactMiddleName, 'Middle Name');
+    fv.checkName(errs, 'contactLastName', v.contactLastName, 'Last Name', true);
     fv.checkPhone(errs, 'telephone', v.telephone, 'Telephone Number', true);
     fv.checkExtension(errs, 'extension', v.extension);
     fv.checkPhone(errs, 'altTelephone', v.altTelephone, 'Alternative Telephone Number');
@@ -1652,6 +1676,7 @@ function OrgModal({ title, initial, onSave, onClose, locked }: {
             <div className="form-group">
               <label>Middle Name</label>
               <input value={vals.contactMiddleName} onChange={e => sv('contactMiddleName', e.target.value)} disabled={locked} />
+              {errors.contactMiddleName && <div className="field-error">{errors.contactMiddleName}</div>}
             </div>
             <div className="form-group">
               <label><span style={{ color: '#dc2626' }}>* </span>Last Name</label>
@@ -1733,7 +1758,8 @@ function StepPolicyInfo({
 
   // Renewal quote field disable logic: for non-producers, most policy fields are read-only
   const disableRenewalFields = isRenewalQuote && !isLoggedInUserProducer;
-  const [isManualAddress, setIsManualAddress] = useState(true);
+  // QP-14: Google Address Search first; Enter Address Manually starts unchecked.
+  const [isManualAddress, setIsManualAddress] = useState(false);
   const [showAddressModeConfirm, setShowAddressModeConfirm] = useState(false);
   const [addressSearchClearToken, setAddressSearchClearToken] = useState(0);
   // Primary Named Insured vs Primary Organization visibility (OutSystems parity):
@@ -1855,7 +1881,8 @@ function StepPolicyInfo({
   const isPrimaryInsuredTypeRequired = !form.isHBProducer;
   const isPrimaryInsuredTypeEditable = (form.isQuickQuote || form.isHBProducer) && !form.lockSubmission;
   // Brokerage Firm / Producer Name — same editability shape as Type of Primary Insured.
-  const isBrokerageFirmEditable = (form.isQuickQuote || form.isHBProducer) && !form.lockSubmission;
+  // QP-15: a producer's Brokerage Firm is their own Intermediary, so it's locked for them.
+  const isBrokerageFirmEditable = (form.isQuickQuote || form.isHBProducer) && !form.lockSubmission && !isLoggedInUserProducer;
   const isProducerNameEditable = (form.isQuickQuote || form.isHBProducer) && !form.lockSubmission;
 
   // Primary Named Insured / Organization fields (OutSystems parity).
@@ -1893,7 +1920,7 @@ function StepPolicyInfo({
             <div className="wizard-section-subtitle">Policy Details</div>
             <div className="form-grid">
               <div>
-                <Field label="Effective Date" required><Input value={form.effectiveDate} onChange={v => { set('effectiveDate', v); if (v) setErrors(e => ({ ...e, effectiveDate: '' })); }} disabled={!isEffectiveDateEditable} /></Field>
+                <Field label="Effective Date" required><DatePicker value={form.effectiveDate} onChange={v => { set('effectiveDate', v); if (v) setErrors(e => ({ ...e, effectiveDate: '' })); }} hasError={Boolean(errors.effectiveDate)} disabled={!isEffectiveDateEditable} /></Field>
                 {errors.effectiveDate && <div className="field-error">{errors.effectiveDate}</div>}
               </div>
               <div>
@@ -1930,7 +1957,10 @@ function StepPolicyInfo({
                     <Field label="First Name" required={isFirstNameRequired}><Input value={form.firstName} onChange={v => { set('firstName', v); if (v) setErrors(e => ({ ...e, firstName: '' })); }} placeholder="First Name" disabled={!nameFieldsEditable} /></Field>
                     {errors.firstName && <div className="field-error">{errors.firstName}</div>}
                   </div>
-                  <Field label="Middle Name / Initial"><Input value={form.middleName} onChange={v => set('middleName', v)} placeholder="Middle Name / Initial" disabled={!nameFieldsEditable} /></Field>
+                  <div>
+                    <Field label="Middle Name / Initial"><Input value={form.middleName} onChange={v => set('middleName', v)} placeholder="Middle Name / Initial" disabled={!nameFieldsEditable} /></Field>
+                    {errors.middleName && <div className="field-error">{errors.middleName}</div>}
+                  </div>
                   <div>
                     <Field label="Last Name" required={isLastNameRequired}><Input value={form.lastName} onChange={v => { set('lastName', v); if (v) setErrors(e => ({ ...e, lastName: '' })); }} placeholder="Last Name" disabled={!nameFieldsEditable} /></Field>
                     {errors.lastName && <div className="field-error">{errors.lastName}</div>}
@@ -1949,7 +1979,10 @@ function StepPolicyInfo({
                   <Field label="Organization Name" required={isOrganisationNameRequired}><Input value={form.organizationName} onChange={v => { set('organizationName', v); if (v) setErrors(e => ({ ...e, organizationName: '' })); }} disabled={!nameFieldsEditable} /></Field>
                   {errors.organizationName && <div className="field-error">{errors.organizationName}</div>}
                 </div>
-                <Field label="Doing Business As"><Input value={form.doingBusinessAs} onChange={v => set('doingBusinessAs', v)} disabled={!nameFieldsEditable} /></Field>
+                <div>
+                  <Field label="Doing Business As"><Input value={form.doingBusinessAs} onChange={v => set('doingBusinessAs', v)} disabled={!nameFieldsEditable} /></Field>
+                  {errors.doingBusinessAs && <div className="field-error">{errors.doingBusinessAs}</div>}
+                </div>
               </div>
             )}
 
@@ -2086,6 +2119,8 @@ function StepPolicyInfo({
           <table className="data-table policy-info-grid additional-insured-grid">
             <thead>
               <tr>
+                {/* QP-19: Action column first. */}
+                <th>Action</th>
                 <SortTh label="Name"                     col="firstName"    sortCol={insuredSort?.col ?? null} sortDir={insuredSort?.dir ?? 'asc'} onSort={() => toggleInsuredSort('firstName')} />
                 <SortTh label="Relationship"             col="relationship" sortCol={insuredSort?.col ?? null} sortDir={insuredSort?.dir ?? 'asc'} onSort={() => toggleInsuredSort('relationship')} />
                 <SortTh label="Telephone Number"         col="telephone"    sortCol={insuredSort?.col ?? null} sortDir={insuredSort?.dir ?? 'asc'} onSort={() => toggleInsuredSort('telephone')} />
@@ -2093,7 +2128,6 @@ function StepPolicyInfo({
                 <SortTh label="Alternative Telephone No" col="altTelephone" sortCol={insuredSort?.col ?? null} sortDir={insuredSort?.dir ?? 'asc'} onSort={() => toggleInsuredSort('altTelephone')} />
                 <SortTh label="Insured Type"             col="insuredType"  sortCol={insuredSort?.col ?? null} sortDir={insuredSort?.dir ?? 'asc'} onSort={() => toggleInsuredSort('insuredType')} />
                 <SortTh label="DBA Name"                 col="dbaName"      sortCol={insuredSort?.col ?? null} sortDir={insuredSort?.dir ?? 'asc'} onSort={() => toggleInsuredSort('dbaName')} />
-                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -2108,13 +2142,6 @@ function StepPolicyInfo({
               )}
               {insuredPageRows.map(ai => (
                 <tr key={ai.id}>
-                  <td>{[ai.firstName, ai.middleName, ai.lastName].filter(Boolean).join(' ')}</td>
-                  <td>{ai.relationship || '-'}</td>
-                  <td>{ai.telephone || '-'}</td>
-                  <td>{ai.email || '-'}</td>
-                  <td>{ai.altTelephone || '-'}</td>
-                  <td>{ai.insuredType}</td>
-                  <td>{ai.dbaName || '-'}</td>
                   <td>
                     <div className="policy-action-cell">
                       <button className="action-btn" title={canEditManualRow(ai) ? 'Edit' : 'Edit unavailable'} disabled={!canEditManualRow(ai)} onClick={() => setInsuredModal({ mode: 'edit', item: ai })}>
@@ -2125,19 +2152,26 @@ function StepPolicyInfo({
                       </button>
                     </div>
                   </td>
+                  <td>{[ai.firstName, ai.middleName, ai.lastName].filter(Boolean).join(' ')}</td>
+                  <td>{ai.relationship || '-'}</td>
+                  <td>{ai.telephone || '-'}</td>
+                  <td>{ai.email || '-'}</td>
+                  <td>{ai.altTelephone || '-'}</td>
+                  <td>{ai.insuredType}</td>
+                  <td>{ai.dbaName || '-'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="table-footer">
             <span>Showing {insuredPageRows.length} records from {sortedInsureds.length} Results</span>
-            <div className="pagination">
+            {fv.showPagination(sortedInsureds.length) && <div className="pagination">
               <button className="page-btn" disabled={insuredPage <= 1} onClick={() => setInsuredPage(p => p - 1)}>&#8249;</button>
               {Array.from({ length: insuredTotalPages }, (_, i) => (
                 <button key={i+1} className={`page-btn${insuredPage === i+1 ? ' active' : ''}`} onClick={() => setInsuredPage(i+1)}>{i+1}</button>
               ))}
               <button className="page-btn" disabled={insuredPage >= insuredTotalPages} onClick={() => setInsuredPage(p => p + 1)}>&#8250;</button>
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -2156,14 +2190,14 @@ function StepPolicyInfo({
         <table className="data-table policy-info-grid additional-org-grid">
           <thead>
             <tr>
-              <SortTh label="Org Name"                   col="orgName"          sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('orgName')} />
+              <th>Action</th>
+              <SortTh label="Org Name"                 col="orgName"          sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('orgName')} />
               <SortTh label="Org Type"                   col="orgType"          sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('orgType')} />
               <SortTh label="Telephone Number"           col="telephone"        sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('telephone')} />
               <SortTh label="Extension"                  col="extension"        sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('extension')} />
               <SortTh label="Alternative Telephone No"   col="altTelephone"     sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('altTelephone')} />
               <SortTh label="Email ID"                   col="email"            sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('email')} />
               <SortTh label="Contact Name"               col="contactFirstName" sortCol={orgSort?.col ?? null} sortDir={orgSort?.dir ?? 'asc'} onSort={() => toggleOrgSort('contactFirstName')} />
-              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -2178,6 +2212,16 @@ function StepPolicyInfo({
             )}
             {orgPageRows.map(org => (
               <tr key={org.id}>
+                <td>
+                  <div className="policy-action-cell">
+                    <button className="action-btn" title={canEditManualRow(org) ? 'Edit' : 'Edit unavailable'} disabled={!canEditManualRow(org)} onClick={() => setOrgModal({ mode: 'edit', item: org })}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    </button>
+                    <button className="action-btn action-btn-danger" title={canEditManualRow(org) ? 'Delete' : 'Delete unavailable'} disabled={!canEditManualRow(org)} onClick={() => setOrgDeleteId(org.id)}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    </button>
+                  </div>
+                </td>
                 <td>{org.orgName}</td>
                 <td>{org.orgType}</td>
                 <td>{org.telephone || '-'}</td>
@@ -2189,29 +2233,19 @@ function StepPolicyInfo({
                 </td>
                 <td>{org.email || '-'}</td>
                 <td>{[org.contactFirstName, org.contactMiddleName, org.contactLastName].filter(Boolean).join(' ') || '-'}</td>
-                <td>
-                  <div className="policy-action-cell">
-                    <button className="action-btn" title={canEditManualRow(org) ? 'Edit' : 'Edit unavailable'} disabled={!canEditManualRow(org)} onClick={() => setOrgModal({ mode: 'edit', item: org })}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                    </button>
-                    <button className="action-btn action-btn-danger" title={canEditManualRow(org) ? 'Delete' : 'Delete unavailable'} disabled={!canEditManualRow(org)} onClick={() => setOrgDeleteId(org.id)}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                    </button>
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
         <div className="table-footer">
           <span>Showing {orgPageRows.length} records from {sortedOrgs.length} Results</span>
-          <div className="pagination">
+          {fv.showPagination(sortedOrgs.length) && <div className="pagination">
             <button className="page-btn" disabled={orgPage <= 1} onClick={() => setOrgPage(p => p - 1)}>&#8249;</button>
             {Array.from({ length: orgTotalPages }, (_, i) => (
               <button key={i+1} className={`page-btn${orgPage === i+1 ? ' active' : ''}`} onClick={() => setOrgPage(i+1)}>{i+1}</button>
             ))}
             <button className="page-btn" disabled={orgPage >= orgTotalPages} onClick={() => setOrgPage(p => p + 1)}>&#8250;</button>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -2329,6 +2363,17 @@ function StepLocation({ form, set, locations, setLocations }: {
     }
   }
 
+  // QP-24: the box starts checked, so show the mailing address as the location card
+  // straight away instead of only after the box is toggled.
+  useEffect(() => {
+    if (form.locationSameAsMailing && locations.length === 0 && form.addressLine1) {
+      const loc = mailingLocation();
+      setLocations([loc]);
+      applyHexZones(loc);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function addLocation(loc: Omit<LocationItem, 'id'>) {
     setLocations([{ id: Date.now(), ...loc }]);
     applyHexZones(loc);
@@ -2439,7 +2484,7 @@ function StepRiskInfo({ form, set, mortgages, setMortgages, isLoggedInUserProduc
   const isNewBusiness = form.screenCode === 'NEWBUSINESSINDIVIDUAL' || form.screenCode === 'NEWBUSINESSBUSINESS';
   const isRenewal = form.screenCode === 'RENEWALINDIVIDUAL' || form.screenCode === 'RENEWALBUSINESS';
   const isEndorsement = form.screenCode === 'ENDORSEMENTINDIVIDUAL' || form.screenCode === 'ENDORSEMENTBUSINESS';
-  const isBulkUploaded = form.isBulkUploaded || form.isQuickQuote;
+  const isBulkUploaded = form.isBulkUploaded;
   const isHBProducer = form.isHBProducer;
 
   // Show HexCat panel based on user type:
@@ -2590,8 +2635,9 @@ function StepRiskInfo({ form, set, mortgages, setMortgages, isLoggedInUserProduc
       <table className="mini-table risk-info-mortgage-table">
         <thead>
           <tr>
-            <th>Mortgage Name</th><th>Loan Type</th><th>Address</th>
-            <th>Telephone Number</th><th>Email ID</th><th>Action</th>
+            {/* QP-27: Action column first. */}
+            <th>Action</th><th>Mortgage Name</th><th>Loan Type</th><th>Address</th>
+            <th>Telephone Number</th><th>Email ID</th>
           </tr>
         </thead>
         <tbody>
@@ -2600,11 +2646,6 @@ function StepRiskInfo({ form, set, mortgages, setMortgages, isLoggedInUserProduc
           )}
           {mortgages.map(m => (
             <tr key={m.id}>
-              <td>{m.name}</td>
-              <td>{m.loanType}</td>
-              <td className="mortgage-address-cell">{mortgageAddressDisplay(m)}</td>
-              <td>{mortgagePhoneDisplay(m)}</td>
-              <td>{m.email}</td>
               <td>
                 <div className="policy-action-cell">
                   <button
@@ -2638,6 +2679,11 @@ function StepRiskInfo({ form, set, mortgages, setMortgages, isLoggedInUserProduc
                   </button>
                 </div>
               </td>
+              <td>{m.name}</td>
+              <td>{m.loanType}</td>
+              <td className="mortgage-address-cell">{mortgageAddressDisplay(m)}</td>
+              <td>{mortgagePhoneDisplay(m)}</td>
+              <td>{m.email}</td>
             </tr>
           ))}
         </tbody>
@@ -5397,6 +5443,12 @@ export default function NewSubmission() {
   const [showCancelMenu, setShowCancelMenu] = useState(false);
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
   const [isLoggedInUserProducer, setIsLoggedInUserProducer] = useState(false);
+  const isLoggedInUserProducerRef = useRef(false);
+  // QP-10: a producer's Primary State options (their Intermediary's states); null = every state.
+  const [producerStates, setProducerStates] = useState<string[] | null>(null);
+  // QP-11: landing validation, re-checked live after the first Create attempt.
+  const [landingErrors, setLandingErrors] = useState<Record<string, string>>({});
+  const [landingAttempted, setLandingAttempted] = useState(false);
   const [isRenewalQuote, setIsRenewalQuote] = useState(false);
   // Step-level validation errors with format: "Provide [Field Label] to continue"
   const [step0Errors, setStep0Errors] = useState<Record<string, string>>({});
@@ -5550,6 +5602,8 @@ export default function NewSubmission() {
         const { producer, intermediary } = result;
         if (producer && intermediary) {
           setIsLoggedInUserProducer(true);
+          isLoggedInUserProducerRef.current = true;
+          setProducerStates(result.states ?? []);
           const brokerageFirmName = intermediary.intermediary_name;
           const producerFullName = `${producer.first_name} ${producer.last_name}`.trim();
 
@@ -5733,13 +5787,11 @@ export default function NewSubmission() {
         }
 
         if (data.form || isRenewal) {
-
-          // Auto-detect bulk-uploaded submissions by checking isQuickQuote flag (handle both boolean and string)
-          const isQuickQuote = (merged.isQuickQuote as any) === true || String(merged.isQuickQuote) === 'true';
-          if (!merged.isBulkUploaded && isQuickQuote) {
-            merged.isBulkUploaded = true;
-          }
+          // QP-28: bulk upload saves its own isBulkUploaded flag. A Quick quote is not a
+          // bulk upload; treating it as one locked every Limits & Coverages field.
           const coercedForm = coerceFormBooleans(merged);
+          // QP-16 etc.: the producer flag must not depend on which load finishes last.
+          if (isLoggedInUserProducerRef.current) coercedForm.isHBProducer = true;
           setForm(withRecordIdentity(applyPlanScenarioDefaults(coercedForm), data.id ?? id));
         }
         if (Array.isArray(data.locations)) setLocations(data.locations);
@@ -5799,8 +5851,30 @@ export default function NewSubmission() {
     return () => { cancelled = true; };
   }, [id]);
 
+  const landingStateOptions = producerStates ?? ALL_STATES;
+
+  // QP-11: every mandatory landing field must be valid before the quote is created.
+  function validateLanding(f: NewSubmissionLandingForm): Record<string, string> {
+    const errors: Record<string, string> = {};
+    if (!f.brokerageFirm) errors.brokerageFirm = fv.required('Intermediary');
+    if (!f.producerName) errors.producerName = fv.required('Producer Name');
+    if (!f.effectiveDate) errors.effectiveDate = fv.required('Effective Date');
+    else if (!fv.isValidDate(f.effectiveDate)) errors.effectiveDate = fv.invalid('Effective Date');
+    if (!f.primaryState || !landingStateOptions.includes(f.primaryState)) errors.primaryState = fv.required('Primary State');
+    return errors;
+  }
+
+  useEffect(() => {
+    if (landingAttempted) setLandingErrors(validateLanding(landingForm));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [landingForm, landingAttempted, producerStates]);
+
   async function handleCreate() {
     setCreateError(null);
+    setLandingAttempted(true);
+    const errors = validateLanding(landingForm);
+    setLandingErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     setCreatingSubmission(true);
 
     const draftForm: FormState = applyPlanScenarioDefaults({
@@ -5822,6 +5896,7 @@ export default function NewSubmission() {
       policyNumber: '',
       recordStatus: 'Draft',
       isQuickQuote: landingForm.typeOfQuote === 'Quick',
+      isHBProducer: isLoggedInUserProducer,
     });
     draftForm.quoteNumber = '';
     draftForm.policyNumber = '';
@@ -5906,11 +5981,16 @@ export default function NewSubmission() {
 
     // Primary Insured - all mandatory
     if (isPersonType) {
-      if (!form.firstName) errors.firstName = 'Provide First Name to continue';
-      if (!form.lastName) errors.lastName = 'Provide Last Name to continue';
+      // QP-21: app-wide name rule.
+      fv.checkName(errors, 'firstName', form.firstName, 'First Name', true);
+      fv.checkName(errors, 'middleName', form.middleName, 'Middle Name');
+      fv.checkName(errors, 'lastName', form.lastName, 'Last Name', true);
       if (!form.age65OrOlder) errors.age65OrOlder = 'Provide age information to continue';
     } else {
       if (!form.organizationName) errors.organizationName = 'Provide Organization Name to continue';
+      // QP-20: Organization Name / Doing Business As up to 75 characters.
+      else fv.checkMaxLength(errors, 'organizationName', form.organizationName, 'Organization Name', fv.ORG_NAME_MAX);
+      fv.checkMaxLength(errors, 'doingBusinessAs', form.doingBusinessAs, 'Doing Business As', fv.ORG_NAME_MAX);
     }
 
     // Mailing Address - all mandatory (Address Line 1 is optional for producers, matching the UI)
@@ -6073,6 +6153,8 @@ export default function NewSubmission() {
           intermediaryOptions={intermediaryOptions}
           producerOptions={landingProducerOptions}
           isProducer={isLoggedInUserProducer}
+          stateOptions={landingStateOptions}
+          errors={landingErrors}
         />
       </div>
     );

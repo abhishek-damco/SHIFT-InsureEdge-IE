@@ -55,7 +55,8 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
                 x.Account,
                 Lob = x.Policy.Products.Select(p => p.Product!.ProductName).FirstOrDefault(),
                 SubProductName = x.Policy.Products.Select(p => p.SubProduct!.SubProductName).FirstOrDefault(),
-                ProductState = x.Policy.Products.Select(p => p.State).FirstOrDefault(),
+                // QP-03: quotes without a product row (e.g. bulk uploads) fall back to the policy's state.
+                ProductState = x.Policy.Products.Select(p => p.State).FirstOrDefault() ?? x.Policy.StateProvince,
                 Coverage = x.Policy.LimitCoverages.FirstOrDefault(),
             });
 
@@ -282,7 +283,8 @@ public class PolicyQuoteRepository : IPolicyQuoteRepository
                 x.Account,
                 Lob = x.Policy.Products.Select(p => p.Product!.ProductName).FirstOrDefault(),
                 SubProductName = x.Policy.Products.Select(p => p.SubProduct!.SubProductName).FirstOrDefault(),
-                ProductState = x.Policy.Products.Select(p => p.State).FirstOrDefault(),
+                // QP-03: quotes without a product row (e.g. bulk uploads) fall back to the policy's state.
+                ProductState = x.Policy.Products.Select(p => p.State).FirstOrDefault() ?? x.Policy.StateProvince,
                 Coverage = x.Policy.LimitCoverages.FirstOrDefault(),
             });
 

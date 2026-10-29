@@ -1,3 +1,4 @@
+import { showPagination } from '../../utils/fieldValidation';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { avatarColor, initials } from './QuotesPoliciesLandingShell';
@@ -265,7 +266,8 @@ export default function EndorsementRegister({ insuredType }: { insuredType: stri
             </select>
             &nbsp;records · {sorted.length.toLocaleString()} results
           </span>
-          <div className="pagination">
+          {/* QP-05: pagination only with 10 or more records. */}
+          <div className="pagination" style={showPagination(sorted.length) ? undefined : { display: 'none' }}>
             <button className="page-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>&#8249;</button>
             {renderPages()}
             <button className="page-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>&#8250;</button>
@@ -292,6 +294,7 @@ export default function EndorsementRegister({ insuredType }: { insuredType: stri
           onToggle={key => setVisibleCols(v => ({ ...v, [key]: !v[key as ColKey] }))}
           onClose={() => setColPanelOpen(false)}
           anchor={colPanelAnchor}
+          anchorEl={colBtnRef.current}
         />
       )}
     </div>

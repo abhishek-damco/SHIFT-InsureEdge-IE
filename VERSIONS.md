@@ -21,6 +21,31 @@ feature, fix a bug, or make a notable change — newest entry at the top.
 
 ---
 
+## 2026-10-29 — Abhishek
+
+**Area:** Backend / Frontend
+
+Quotes & Policies QA fixes (QP-01 – QP-28; QP-29 deferred). Details and open items: `QUOTES_POLICIES_OPEN_ISSUES.md`.
+
+- **New Submission root cause:** a Producer's quote lost `isHBProducer` (never saved, and lost a load race), and every Quick quote was treated as bulk-uploaded. Together these disabled Contact Details, Add buttons, Google search, the location checkbox, Flood drop-downs, Mortgage Add and all Limits & Coverages fields.
+- **Landing:** Single / Quick / United States locked. Primary State comes from the Producer's Intermediary states (`/auth/me/producer` → `states`). Required-field validation on Create, plus a server check on `POST /submissions`.
+- **Policy Info:**
+  - Effective Date date picker
+  - Enter Address Manually unchecked by default
+  - Brokerage Firm locked for producers
+  - name rule (`fv.checkName`) and 75-character Organization / DBA limits
+  - Action column first
+  - location card shown for "same as mailing"
+  - `addOneYear` date-format fix
+- **Listing:**
+  - working hamburgers (Actions panel and wizard sidebar), Actions panel on the New Submission landing
+  - KPI icons no longer faint
+  - Modify Columns pop-up follows its header and scrolls
+  - State column falls back to the policy state
+  - pagination only with 10+ records (`fv.showPagination`, shared `PaginationBar` and the Q&P registers)
+
+---
+
 ## 2026-10-28 — Abhishek
 
 **Area:** DB / Backend / Frontend

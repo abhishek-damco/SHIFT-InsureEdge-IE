@@ -199,14 +199,31 @@ export function FilterPopup({ colLabel, options, current, anchor, onApply, onClo
 // ── Column Visibility Panel ───────────────────────────────────────────────────
 export interface ColDef { key: string; label: string; }
 
-export function ColPanel({ colDefs, visibleCols, onToggle, onClose, anchor }: {
+export function ColPanel({ colDefs, visibleCols, onToggle, onClose, anchor, anchorEl }: {
   colDefs: readonly ColDef[];
   visibleCols: Record<string, boolean>;
   onToggle: (key: string) => void;
   onClose: () => void;
   anchor: { top: number; left: number };
+  /** QP-04: the header trigger; when given, the panel follows it as the page/grid scrolls. */
+  anchorEl?: HTMLElement | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState(anchor);
+  useEffect(() => {
+    if (!anchorEl) { setPos(anchor); return; }
+    const update = () => {
+      const r = anchorEl.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [anchorEl, anchor.top, anchor.left]);
   useEffect(() => {
     const id = setTimeout(() => {
       const h = (e: MouseEvent) => {
@@ -219,7 +236,7 @@ export function ColPanel({ colDefs, visibleCols, onToggle, onClose, anchor }: {
   }, [onClose]);
 
   return (
-    <div ref={ref} className="col-panel" style={{ position: 'fixed', top: anchor.top, left: anchor.left, zIndex: 9999 }}>
+    <div ref={ref} className="col-panel" style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}>
       <div className="col-panel-title">Modify Columns Display</div>
       <label className="col-panel-item col-panel-item-disabled">
         <input type="checkbox" checked disabled />

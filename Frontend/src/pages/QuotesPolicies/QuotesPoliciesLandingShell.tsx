@@ -2,7 +2,8 @@
 // Layout wrapper for the Quotes & Policies landing pages (register grids) plus the
 // WizardSidebar used by the New Submission wizard. Ported from the prototype's
 // components/QuotesPoliciesLandingShell.tsx + WizardSidebar (originally in App.tsx).
-import { ChevronRight, FileCheck2, FileClock, FilePlus2, FileText, PanelLeftClose, type LucideIcon } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronRight, FileCheck2, FileClock, FilePlus2, FileText, PanelLeftClose, PanelLeftOpen, type LucideIcon } from 'lucide-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import './QuotesPolicies.css';
 
@@ -41,17 +42,22 @@ function isActivePath(pathname: string, to: string, matches: string[] = []) {
 
 export default function QuotesPoliciesLandingShell() {
   const location = useLocation();
-  const hideLandingActions = location.pathname.startsWith('/quotes-policies/submissions');
+  // QP-06: the New Submission landing (Producer & Product Details) keeps the Actions panel;
+  // the wizard itself has its own sidebar.
+  const isSubmissionLanding = new URLSearchParams(location.search).get('landing') === '1';
+  const hideLandingActions = location.pathname.startsWith('/quotes-policies/submissions') && !isSubmissionLanding;
+  // QP-01: the hamburger collapses / expands the Actions panel.
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="qp-scope" style={{ height: '100%' }}>
       <div className="app-body" style={{ height: '100%' }}>
         {!hideLandingActions && (
-          <aside className="sidebar">
+          <aside className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}>
             <div className="sidebar-header">
               <span>Actions</span>
-              <button className="sidebar-toggle" type="button" title="Collapse actions">
-                <PanelLeftClose size={16} />
+              <button className="sidebar-toggle" type="button" title={collapsed ? 'Expand actions' : 'Collapse actions'} onClick={() => setCollapsed(c => !c)}>
+                {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
               </button>
             </div>
 
@@ -93,7 +99,7 @@ export default function QuotesPoliciesLandingShell() {
           </aside>
         )}
 
-        <main className={`main${hideLandingActions ? ' main-fullwidth' : ''}`}>
+        <main className={`main${location.pathname.startsWith('/quotes-policies/submissions') ? ' main-fullwidth' : ''}`}>
           <Outlet />
         </main>
       </div>
@@ -145,6 +151,8 @@ export function WizardSidebar({ submissionId, status, currentStep, onStepClick, 
   ];
   const currentIndex = orderedSteps.indexOf(currentStep);
   const currentStatus = status || 'Draft';
+  // QP-01: the hamburger collapses / expands the wizard sidebar.
+  const [collapsed, setCollapsed] = useState(false);
 
   const stepStatus = (step: number): StepStatus => {
     if (step === currentStep) return 'active';
@@ -177,10 +185,10 @@ export function WizardSidebar({ submissionId, status, currentStep, onStepClick, 
       : 'pending';
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}>
       <div className="sidebar-header">
-        {recordLabel}
-        <button className="sidebar-toggle" type="button">&#8801;</button>
+        <span>{recordLabel}</span>
+        <button className="sidebar-toggle" type="button" title={collapsed ? 'Expand' : 'Collapse'} onClick={() => setCollapsed(c => !c)}>&#8801;</button>
       </div>
       <div className="submission-sidebar">
         <div className="submission-id-box">{isPolicy ? 'Policy ID' : 'ID'} - {submissionId}</div>

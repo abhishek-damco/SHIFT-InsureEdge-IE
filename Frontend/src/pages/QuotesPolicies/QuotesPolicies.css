@@ -157,6 +157,21 @@ a.nav-item.active {
   padding: 0;
 }
 
+/* QP-01: collapsed sidebar shows only its hamburger. */
+.qp-scope .sidebar.sidebar-collapsed {
+  width: 52px;
+  min-width: 52px;
+  padding: 12px 8px;
+  overflow: hidden;
+}
+.qp-scope .sidebar.sidebar-collapsed > :not(.sidebar-header),
+.qp-scope .sidebar.sidebar-collapsed .sidebar-header > span {
+  display: none;
+}
+.qp-scope .sidebar.sidebar-collapsed .sidebar-header {
+  justify-content: center;
+}
+
 /* ── Page Header ──────────────────────────────────────────────────────────── */
 .page-content {
   display: flex;
@@ -205,7 +220,8 @@ a.nav-item.active {
 .kpi-stat-body { display: flex; flex-direction: column; gap: 2px; }
 .kpi-stat-label { font-size: 12px; color: #6b7280; font-weight: 500; }
 .kpi-stat-value { font-size: 22px; font-weight: 700; line-height: 1.2; }
-.kpi-stat-icon { opacity: 0.18; }
+/* QP-02: icons were too faint to read; show them at near-full strength. */
+.kpi-stat-icon { opacity: 0.85; }
 
 /* ── Register Card / Data Grid ────────────────────────────────────────────── */
 .register-card {

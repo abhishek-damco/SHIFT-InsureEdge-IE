@@ -1,4 +1,5 @@
 ﻿import React from 'react';
+import { showPagination } from '../utils/fieldValidation';
 
 interface PaginationBarProps {
   page: number;
@@ -78,7 +79,8 @@ export default function PaginationBar({
           <span>Results</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* QP-05: page buttons only once the listing has 10 or more records. */}
+        <div style={{ display: showPagination(total) ? 'flex' : 'none', alignItems: 'center', gap: 8 }}>
           <button aria-label="First page" onClick={() => goTo(1)} disabled={disabledPrev} style={{ ...buttonBase, color: disabledPrev ? '#b8c2cc' : '#334155', background: disabledPrev ? '#f8fafc' : '#fff', cursor: disabledPrev ? 'default' : 'pointer' }}><Chevron direction="first" /></button>
           <button aria-label="Previous page" onClick={() => goTo(currentPage - 1)} disabled={disabledPrev} style={{ ...buttonBase, color: disabledPrev ? '#b8c2cc' : '#334155', background: disabledPrev ? '#f8fafc' : '#fff', cursor: disabledPrev ? 'default' : 'pointer' }}><Chevron direction="prev" /></button>
           {pageWindow(currentPage, totalPages).map((item, index) => item === 'ellipsis' ? (

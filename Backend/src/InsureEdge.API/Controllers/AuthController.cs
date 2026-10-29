@@ -245,10 +245,25 @@ public class AuthController : ControllerBase
         var intermediary = _tenant.IntermediaryId == null ? null
             : await _db.Intermediaries.FirstOrDefaultAsync(i => i.Id == _tenant.IntermediaryId.Value);
 
+        // QA QP-10: New Submission's Primary State lists only the Intermediary's
+        // Resident and Non-Resident States.
+        var states = new List<string>();
+        if (intermediary != null)
+        {
+            if (!string.IsNullOrWhiteSpace(intermediary.ResidentialState))
+                states.Add(intermediary.ResidentialState.Trim());
+            var nrStates = await _db.IntermediaryNrStates
+                .Where(s => s.IntermediaryId == intermediary.Id && s.ClientId == _tenant.ClientId)
+                .Select(s => s.State)
+                .ToListAsync();
+            states.AddRange(nrStates.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()));
+        }
+
         return Ok(new
         {
             producer = producer == null ? null : new { id = producer.Id, first_name = producer.FirstName, last_name = producer.LastName },
             intermediary = intermediary == null ? null : new { id = intermediary.Id, intermediary_name = intermediary.IntermediaryName, type_of_intermediary = intermediary.TypeOfIntermediary },
+            states = states.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s).ToList(),
         });
     }
 }

@@ -36,4 +36,6 @@ export interface UpdateMyProfileRequest {
 export interface MyProducerResponse {
   producer: { id: number; first_name: string; last_name: string } | null;
   intermediary: { id: number; intermediary_name: string; type_of_intermediary: string | null } | null;
+  /** QP-10: the Intermediary's Resident + Non-Resident States (empty for staff). */
+  states?: string[];
 }

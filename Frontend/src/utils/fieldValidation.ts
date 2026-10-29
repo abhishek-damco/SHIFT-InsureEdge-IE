@@ -14,6 +14,13 @@ export const ADDRESS_LINE_MAX = 500;
 export const CITY_MAX = 50;
 export const COUNTY_MAX = 50;
 
+// QA QP-20: Organization Name / Doing Business As.
+export const ORG_NAME_MAX = 75;
+
+// QA QP-05: listings show pagination only once they hold this many records.
+export const PAGINATION_MIN_RECORDS = 10;
+export const showPagination = (total: number) => total >= PAGINATION_MIN_RECORDS;
+
 // QA UM-13: confirmation shown when "Enter Address Manually" is unchecked.
 export const ADDRESS_UNCHECK_MSG = 'Unchecking this option will remove the address you entered. Do you want to continue?';
 
@@ -118,6 +125,12 @@ export function checkZip(e: Errors, key: string, value: string | undefined, coun
   const label = zipLabel(country);
   if (isBlank(value)) { if (isRequired) e[key] = required(label); }
   else if (!isValidZip(value!.trim(), country)) e[key] = invalid(label);
+}
+
+// QP-21: person names use the app-wide name rule (isValidName, max 50).
+export function checkName(e: Errors, key: string, value: string | undefined | null, label: string, isRequired = false) {
+  if (isBlank(value)) { if (isRequired) e[key] = required(label); return; }
+  if (!isValidName(value!)) e[key] = invalid(label);
 }
 
 export function checkMaxLength(e: Errors, key: string, value: string | undefined | null, label: string, max: number) {

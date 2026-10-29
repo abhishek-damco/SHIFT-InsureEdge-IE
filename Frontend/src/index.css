@@ -5218,6 +5218,9 @@ span.ap-th-lbl { cursor: default; }
   width: 220px;
   padding: 8px 0 4px;
   z-index: 9999;
+  /* QP-04: long column lists scroll inside the pop-up. */
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .qp-scope .col-panel-title {
@@ -5244,7 +5247,7 @@ span.ap-th-lbl { cursor: default; }
 
 .qp-scope .col-panel-item:hover { background: #f9fafb; }
 
-.qp-scope .col-panel-item input[type="checkbox"] { cursor: pointer; accent-color: #1a3b6b; }
+.qp-scope .col-panel-item input[type="checkbox"] { cursor: pointer; accent-color: #1a3b6b; margin: 0; flex-shrink: 0; width: 14px; height: 14px; }
 
 .qp-scope .col-panel-item-disabled {
   opacity: 0.5;
@@ -5396,58 +5399,58 @@ span.ap-th-lbl { cursor: default; }
   text-overflow: ellipsis;
 }
 
-.qp-scope .policy-info-grid th:last-child,
-.qp-scope .policy-info-grid td:last-child {
+.qp-scope .policy-info-grid th:first-child,
+.qp-scope .policy-info-grid td:first-child {
   text-align: center;
 }
 
 .qp-scope .additional-insured-grid th:nth-child(1),
-.qp-scope .additional-insured-grid td:nth-child(1) { width: 10%; }
+.qp-scope .additional-insured-grid td:nth-child(1) { width: 8%; }
 
 .qp-scope .additional-insured-grid th:nth-child(2),
-.qp-scope .additional-insured-grid td:nth-child(2) { width: 11%; }
+.qp-scope .additional-insured-grid td:nth-child(2) { width: 10%; }
 
 .qp-scope .additional-insured-grid th:nth-child(3),
-.qp-scope .additional-insured-grid td:nth-child(3) { width: 15%; }
+.qp-scope .additional-insured-grid td:nth-child(3) { width: 11%; }
 
 .qp-scope .additional-insured-grid th:nth-child(4),
-.qp-scope .additional-insured-grid td:nth-child(4) { width: 14%; }
+.qp-scope .additional-insured-grid td:nth-child(4) { width: 15%; }
 
 .qp-scope .additional-insured-grid th:nth-child(5),
-.qp-scope .additional-insured-grid td:nth-child(5) { width: 20%; }
+.qp-scope .additional-insured-grid td:nth-child(5) { width: 14%; }
 
 .qp-scope .additional-insured-grid th:nth-child(6),
-.qp-scope .additional-insured-grid td:nth-child(6) { width: 11%; }
+.qp-scope .additional-insured-grid td:nth-child(6) { width: 20%; }
 
 .qp-scope .additional-insured-grid th:nth-child(7),
 .qp-scope .additional-insured-grid td:nth-child(7) { width: 11%; }
 
 .qp-scope .additional-insured-grid th:nth-child(8),
-.qp-scope .additional-insured-grid td:nth-child(8) { width: 8%; }
+.qp-scope .additional-insured-grid td:nth-child(8) { width: 11%; }
 
 .qp-scope .additional-org-grid th:nth-child(1),
-.qp-scope .additional-org-grid td:nth-child(1) { width: 10%; }
+.qp-scope .additional-org-grid td:nth-child(1) { width: 6%; }
 
 .qp-scope .additional-org-grid th:nth-child(2),
-.qp-scope .additional-org-grid td:nth-child(2) { width: 9%; }
+.qp-scope .additional-org-grid td:nth-child(2) { width: 10%; }
 
 .qp-scope .additional-org-grid th:nth-child(3),
-.qp-scope .additional-org-grid td:nth-child(3) { width: 15%; }
+.qp-scope .additional-org-grid td:nth-child(3) { width: 9%; }
 
 .qp-scope .additional-org-grid th:nth-child(4),
-.qp-scope .additional-org-grid td:nth-child(4) { width: 10%; }
+.qp-scope .additional-org-grid td:nth-child(4) { width: 15%; }
 
 .qp-scope .additional-org-grid th:nth-child(5),
-.qp-scope .additional-org-grid td:nth-child(5) { width: 22%; }
+.qp-scope .additional-org-grid td:nth-child(5) { width: 10%; }
 
 .qp-scope .additional-org-grid th:nth-child(6),
-.qp-scope .additional-org-grid td:nth-child(6) { width: 16%; }
+.qp-scope .additional-org-grid td:nth-child(6) { width: 22%; }
 
 .qp-scope .additional-org-grid th:nth-child(7),
-.qp-scope .additional-org-grid td:nth-child(7) { width: 12%; }
+.qp-scope .additional-org-grid td:nth-child(7) { width: 16%; }
 
 .qp-scope .additional-org-grid th:nth-child(8),
-.qp-scope .additional-org-grid td:nth-child(8) { width: 6%; }
+.qp-scope .additional-org-grid td:nth-child(8) { width: 12%; }
 
 .qp-scope .policy-action-cell {
   display: inline-flex;
@@ -6632,22 +6635,22 @@ span.ap-th-lbl { cursor: default; }
 }
 
 .qp-scope .risk-info-screen .risk-info-mortgage-table th:nth-child(1),
-.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(1) { width: 10%; }
+.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(1) { width: 6%; }
 
 .qp-scope .risk-info-screen .risk-info-mortgage-table th:nth-child(2),
 .qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(2) { width: 10%; }
 
 .qp-scope .risk-info-screen .risk-info-mortgage-table th:nth-child(3),
-.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(3) { width: 50%; }
+.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(3) { width: 10%; }
 
 .qp-scope .risk-info-screen .risk-info-mortgage-table th:nth-child(4),
-.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(4) { width: 12%; }
+.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(4) { width: 50%; }
 
 .qp-scope .risk-info-screen .risk-info-mortgage-table th:nth-child(5),
 .qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(5) { width: 12%; }
 
 .qp-scope .risk-info-screen .risk-info-mortgage-table th:nth-child(6),
-.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(6) { width: 6%; }
+.qp-scope .risk-info-screen .risk-info-mortgage-table td:nth-child(6) { width: 12%; }
 
 .qp-scope .risk-info-screen .risk-info-mortgage-table .mortgage-address-cell {
   overflow: hidden;

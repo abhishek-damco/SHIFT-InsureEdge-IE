@@ -1,9 +1,11 @@
+import { showPagination } from '../../utils/fieldValidation';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { avatarColor, initials } from './QuotesPoliciesLandingShell';
 import { quotesPoliciesApi } from '../../api/quotesPolicies';
 import { authApi } from '../../api/auth';
 import BulkUploadModal from './BulkUploadModal';
+import { ColPanel } from './GridHelpers';
 import type { NbQuoteListItemDto, NbQuotesKpiDto } from '../../types/Policy';
 import type { MyProfile } from '../../types/CurrentUser';
 
@@ -247,51 +249,6 @@ function FilterPopup({ options, current, anchor, onApply, onClose }: FilterPopup
   );
 }
 
-// ── Column Visibility Panel ────────────────────────────────────────────────────
-function ColPanel({ visibleCols, onToggle, onClose, anchor }: {
-  visibleCols: ColVisibility;
-  onToggle: (key: ColKey) => void;
-  onClose: () => void;
-  anchor: { top: number; left: number };
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const id = setTimeout(() => {
-      const h = (e: MouseEvent) => {
-        if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-      };
-      document.addEventListener('mousedown', h);
-      return () => document.removeEventListener('mousedown', h);
-    }, 80);
-    return () => clearTimeout(id);
-  }, [onClose]);
-
-  return (
-    <div
-      ref={ref}
-      className="col-panel"
-      style={{ position: 'fixed', top: anchor.top, left: anchor.left, zIndex: 9999 }}
-    >
-      <div className="col-panel-title">Modify Columns Display</div>
-      {/* Action column — always visible, greyed out */}
-      <label className="col-panel-item col-panel-item-disabled">
-        <input type="checkbox" checked disabled />
-        <span>Action</span>
-      </label>
-      {COL_DEFS.map(col => (
-        <label key={col.key} className="col-panel-item">
-          <input
-            type="checkbox"
-            checked={visibleCols[col.key]}
-            onChange={() => onToggle(col.key)}
-          />
-          <span>{col.label}</span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function NBQuotesRegister({ insuredType }: { insuredType: string }) {
   const [allQuotes, setAllQuotes]   = useState<Quote[]>([]);
@@ -306,6 +263,7 @@ export default function NBQuotesRegister({ insuredType }: { insuredType: string 
   const defaultCols = Object.fromEntries(COL_DEFS.map(c => [c.key, true])) as ColVisibility;
   const [visibleCols, setVisibleCols] = useState<ColVisibility>(defaultCols);
   const [colPanelAnchor, setColPanelAnchor] = useState<{ top: number; left: number } | null>(null);
+  const colTriggerRef = useRef<HTMLDivElement>(null);
 
   function toggleCol(key: ColKey) {
     setVisibleCols(p => ({ ...p, [key]: !p[key] }));
@@ -601,6 +559,7 @@ export default function NBQuotesRegister({ insuredType }: { insuredType: string 
               <tr>
                 <th style={{ width: 36 }}>
                   <div
+                    ref={colTriggerRef}
                     className={`th-inner col-panel-trigger${colPanelAnchor ? ' col-panel-open' : ''}`}
                     title="Modify columns display"
                     onMouseDown={e => {
@@ -698,7 +657,8 @@ export default function NBQuotesRegister({ insuredType }: { insuredType: string 
             </select>
             &nbsp;records from&nbsp;<strong>{total.toLocaleString()}</strong>&nbsp;Results
           </div>
-          <div className="pagination">
+          {/* QP-05: pagination only with 10 or more records. */}
+          <div className="pagination" style={showPagination(total) ? undefined : { display: 'none' }}>
             <button className="page-btn" disabled={page <= 1} onClick={() => setPage(1)}>«</button>
             <button className="page-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹</button>
             {pageNums().map((n, idx) =>
@@ -729,9 +689,11 @@ export default function NBQuotesRegister({ insuredType }: { insuredType: string 
       {colPanelAnchor && (
         <ColPanel
           visibleCols={visibleCols}
-          onToggle={toggleCol}
+          colDefs={COL_DEFS}
+          onToggle={key => toggleCol(key as ColKey)}
           onClose={() => setColPanelAnchor(null)}
           anchor={colPanelAnchor}
+          anchorEl={colTriggerRef.current}
         />
       )}
       {showBulkUpload && <BulkUploadModal onClose={() => { setShowBulkUpload(false); fetchQuotes(); }} />}

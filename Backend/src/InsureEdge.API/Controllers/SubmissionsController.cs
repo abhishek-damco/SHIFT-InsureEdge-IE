@@ -34,6 +34,8 @@ public class SubmissionsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateSubmissionRequest req)
     {
+        if (MissingPrimaryState(req.DataJson))
+            return BadRequest(new { error = "Provide Primary State to continue" });
         try
         {
             return Ok(await _submissions.CreateAsync(req));
@@ -41,6 +43,28 @@ public class SubmissionsController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    // QA QP-11: a New Business quote can't be created without its Primary State.
+    // Endorsement/renewal drafts (created from Policy Summary) carry their own state.
+    private static bool MissingPrimaryState(string? dataJson)
+    {
+        if (string.IsNullOrWhiteSpace(dataJson)) return false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(dataJson);
+            if (!doc.RootElement.TryGetProperty("form", out var form) || form.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return false;
+            var screenCode = form.TryGetProperty("screenCode", out var sc) && sc.ValueKind == System.Text.Json.JsonValueKind.String ? sc.GetString() : null;
+            if (screenCode == null || !screenCode.StartsWith("NEWBUSINESS", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var state = form.TryGetProperty("state", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.String ? st.GetString() : null;
+            return string.IsNullOrWhiteSpace(state);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 
