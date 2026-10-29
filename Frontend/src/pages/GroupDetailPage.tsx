@@ -13,7 +13,7 @@ import { usePermissions } from '../contexts/PermissionContext';
 import type { ScreenPermissionSaveDto, ScreenPermissionDto, UpdateGroupInfoRequest } from '../types/Group';
 import type { UserSelectDto } from '../types/User';
 import {
-  validateGroupInfo, type GroupInfoErrors, GROUP_NAME_MAX, GROUP_EMAIL_MAX, GROUP_DESC_MAX,
+  validateGroupInfo, isAllowedGroupNameInput, sanitizeGroupNameInput, type GroupInfoErrors, GROUP_NAME_MAX, GROUP_EMAIL_MAX, GROUP_DESC_MAX,
 } from '../components/GroupForm/groupValidation';
 import { InfoTooltip, GROUP_RIGHTS_TOOLTIP } from '../components/GroupForm/GroupFormParts';
 
@@ -158,7 +158,21 @@ function InfoPanel({
         <>
           <div className="form-group">
             <label>Group Name <span style={{ color: '#dc2626' }}>*</span></label>
-            <input value={name} onChange={e => setName(e.target.value)} maxLength={GROUP_NAME_MAX} className={errs.groupName ? 'error' : ''} />
+            <input
+              value={name}
+              onBeforeInput={event => {
+                const inserted = (event.nativeEvent as InputEvent).data;
+                if (inserted && !isAllowedGroupNameInput(inserted)) event.preventDefault();
+              }}
+              onKeyDown={event => {
+                if (event.key.length === 1 && !isAllowedGroupNameInput(event.key)) event.preventDefault();
+              }}
+              onChange={e => setName(sanitizeGroupNameInput(e.target.value))}
+              maxLength={GROUP_NAME_MAX}
+              pattern={"[A-Za-z0-9 &.'/-]+"}
+              title="Use only letters, numbers, spaces, and - & . ' /"
+              className={errs.groupName ? 'error' : ''}
+            />
             {errs.groupName && <div className="error-msg">{errs.groupName}</div>}
           </div>
           <div className="form-group">

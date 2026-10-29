@@ -339,7 +339,7 @@ export default function GroupListPage() {
 
       {/* Stat cards */}
       {data && (
-        <StatCards total={data.total} activeCount={data.activeCount} inactiveCount={data.inactiveCount} />
+        <StatCards total={data.total} activeCount={data.activeCount} inactiveCount={data.inactiveCount} variant="user-groups" />
       )}
 
       {/* Toolbar */}

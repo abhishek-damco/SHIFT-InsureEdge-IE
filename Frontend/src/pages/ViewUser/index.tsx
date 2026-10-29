@@ -387,15 +387,15 @@ export default function ViewUser() {
                 </div>
                 <div style={{ marginBottom: 14 }}>
                   <Label required>Office Location</Label>
-                  <SearchableSelect options={officeOpts} value={edit.officeLocation} onChange={v => setF('officeLocation', v)} placeholder="Select..." />
+                  <SearchableSelect appearance="user-reference" options={officeOpts} value={edit.officeLocation} onChange={v => setF('officeLocation', v)} placeholder="Select..." />
                 </div>
                 <div style={{ marginBottom: 14 }}>
                   <Label required>Group</Label>
-                  <SearchableSelect options={groupOpts} value={edit.groupId} onChange={v => setF('groupId', v)} placeholder="Select..." />
+                  <SearchableSelect appearance="user-reference" options={groupOpts} value={edit.groupId} onChange={v => setF('groupId', v)} placeholder="Select..." />
                 </div>
                 <div style={{ marginBottom: 14 }}>
                   <Label required>Department / Function</Label>
-                  <SearchableSelect options={DEPARTMENTS} value={edit.department} onChange={v => setF('department', v)} placeholder="Select..." />
+                  <SearchableSelect appearance="user-reference" options={DEPARTMENTS} value={edit.department} onChange={v => setF('department', v)} placeholder="Select..." />
                 </div>
                 <div style={row2}>
                   <div><Label required>Is a Manager</Label>

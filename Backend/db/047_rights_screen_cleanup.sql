@@ -5,6 +5,8 @@
 -- existing references, and their grants are merged into the landing row first.
 -- Idempotent — safe to re-run.
 
+BEGIN;
+
 ALTER TABLE app_screen ADD COLUMN IF NOT EXISTS is_visible boolean NOT NULL DEFAULT true;
 
 -- ─── Merge hidden Add/View grants into the landing row ────────────────────────
@@ -109,3 +111,5 @@ FROM intermediary_screen_permissions ip
 JOIN app_screen policies ON policies.id = ip.screen_id AND policies.screen_code = 'POLICIESINDIVIDUAL'
 JOIN app_screen summary  ON summary.screen_code = 'POLICYSUMMARY'
 ON CONFLICT (intermediary_id, screen_id, client_id) DO NOTHING;
+
+COMMIT;

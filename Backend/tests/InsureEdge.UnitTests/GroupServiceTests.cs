@@ -94,6 +94,25 @@ public class GroupServiceTests
             .Where(e => e.Errors.Contains(GroupValidator.GroupNameInvalid));
     }
 
+    [Theory]
+    [InlineData("AZ az 09 - & . ' /")]
+    [InlineData("Claims & Risk/Operations - 2026")]
+    public void GroupName_AllowedCharacters_PassValidation(string groupName)
+    {
+        GroupValidator.Validate(groupName, 1, null, null)
+            .Should().NotContain(GroupValidator.GroupNameInvalid);
+    }
+
+    [Theory]
+    [InlineData("Group_Name")]
+    [InlineData("Group@Name")]
+    [InlineData("Group#1")]
+    public void GroupName_UnsupportedCharacters_FailValidation(string groupName)
+    {
+        GroupValidator.Validate(groupName, 1, null, null)
+            .Should().Contain(GroupValidator.GroupNameInvalid);
+    }
+
     [Fact]
     public async Task CreateGroup_MissingLeader_ThrowsValidationException()
     {

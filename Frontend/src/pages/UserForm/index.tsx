@@ -489,19 +489,19 @@ export default function UserForm() {
 
               <div style={field}>
                 <Label required>Office Location</Label>
-                <SearchableSelect options={officeOpts} value={form.officeLocation} onChange={v => set('officeLocation', v)} placeholder="Select..." />
+                <SearchableSelect appearance="user-reference" options={officeOpts} value={form.officeLocation} onChange={v => set('officeLocation', v)} placeholder="Select..." />
                 <FieldError msg={errors.officeLocation} />
               </div>
 
               <div style={field}>
                 <Label required>Group</Label>
-                <SearchableSelect options={groupOpts} value={form.groupId} onChange={v => set('groupId', v)} placeholder="Select..." />
+                <SearchableSelect appearance="user-reference" options={groupOpts} value={form.groupId} onChange={v => set('groupId', v)} placeholder="Select..." />
                 <FieldError msg={errors.groupId} />
               </div>
 
               <div style={field}>
                 <Label required>Department / Function</Label>
-                <SearchableSelect options={DEPARTMENTS} value={form.department} onChange={v => set('department', v)} placeholder="Select..." />
+                <SearchableSelect appearance="user-reference" options={DEPARTMENTS} value={form.department} onChange={v => set('department', v)} placeholder="Select..." />
                 <FieldError msg={errors.department} />
               </div>
 

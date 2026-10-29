@@ -12,6 +12,16 @@ export const GROUP_DESC_LENGTH_ERROR = 'Group Description should be in between 5
 
 // Letters, digits, space and - & . ' /
 const GROUP_NAME_CHARS = /^[A-Za-z0-9 \-&.'/]+$/;
+const GROUP_NAME_INVALID_CHARS = /[^A-Za-z0-9 &.'\/-]/g;
+const GROUP_NAME_INPUT_CHARS = /^[A-Za-z0-9 &.'\/-]+$/;
+
+export function isAllowedGroupNameInput(value: string): boolean {
+  return GROUP_NAME_INPUT_CHARS.test(value);
+}
+
+export function sanitizeGroupNameInput(value: string): string {
+  return value.replace(GROUP_NAME_INVALID_CHARS, '').slice(0, GROUP_NAME_MAX);
+}
 
 export type GroupInfoErrors = Partial<Record<keyof GroupInfoValues, string>>;
 

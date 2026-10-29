@@ -1,6 +1,6 @@
 // US-002/US-004: Group Information panel — Name, Code (read-only), Email, Leader, Desc, Status
 import type { UserSelectDto } from '../../types/User';
-import { GROUP_NAME_MAX, GROUP_EMAIL_MAX, GROUP_DESC_MAX } from './groupValidation';
+import { GROUP_NAME_MAX, GROUP_EMAIL_MAX, GROUP_DESC_MAX, isAllowedGroupNameInput, sanitizeGroupNameInput } from './groupValidation';
 
 export interface GroupInfoValues {
   groupName: string;
@@ -69,9 +69,18 @@ export default function GroupInformationPanel({
         <label style={{ fontSize: 11 }}><span style={{ color: '#dc2626' }}>*</span> Group Name</label>
         <input
           value={values.groupName}
-          onChange={e => onChange('groupName', e.target.value)}
+          onBeforeInput={event => {
+            const inserted = (event.nativeEvent as InputEvent).data;
+            if (inserted && !isAllowedGroupNameInput(inserted)) event.preventDefault();
+          }}
+          onKeyDown={event => {
+            if (event.key.length === 1 && !isAllowedGroupNameInput(event.key)) event.preventDefault();
+          }}
+          onChange={e => onChange('groupName', sanitizeGroupNameInput(e.target.value))}
           className={errors.groupName ? 'error' : ''}
           maxLength={GROUP_NAME_MAX}
+          pattern={"[A-Za-z0-9 &.'/-]+"}
+          title="Use only letters, numbers, spaces, and - & . ' /"
           disabled={readOnly}
           style={{ height: 27, padding: '5px 9px', borderRadius: 2, fontSize: 11, background: '#f8f9fc' }}
         />
