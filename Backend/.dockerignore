@@ -1,0 +1,16 @@
+﻿.env
+.env.*
+!.env.example
+
+**/bin/
+**/obj/
+
+.git/
+.gitignore
+
+.vs/
+.vscode/
+.idea/
+
+*.user
+*.suo

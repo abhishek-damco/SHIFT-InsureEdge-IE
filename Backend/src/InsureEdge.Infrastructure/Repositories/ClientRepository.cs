@@ -1,0 +1,631 @@
+// AI_GENERATED | HUMAN_VALIDATION_REQUIRED
+using InsureEdge.Application.DTOs.Client;
+using InsureEdge.Application.Interfaces;
+using InsureEdge.Application.Validation;
+using InsureEdge.Domain.Entities;
+using InsureEdge.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace InsureEdge.Infrastructure.Repositories;
+
+public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
+{
+    // ── List ──────────────────────────────────────────────────────────────────
+    public async Task<(List<ClientListItemDto> Items, int Total)> GetListAsync(
+        long clientId, string? search, int page, int pageSize)
+    {
+        // In the SHIFT platform the "client management" list is visible only to
+        // a platform admin who sees ALL clients (or the current tenant's record).
+        // For now we return the single tenant client plus any sub-clients if needed.
+        var q = db.Clients.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(c => c.CompanyName.Contains(search) || (c.ClientCode != null && c.ClientCode.Contains(search)));
+
+        var total = await q.CountAsync();
+        var items = await q
+            .OrderBy(c => c.CompanyName)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(c => new ClientListItemDto(
+                c.Id,
+                c.ClientCode ?? c.Id.ToString("D5"),
+                c.CompanyName,
+                c.Status,
+                c.TypeOfCompany ?? "-",
+                c.NaicCode,
+                c.EmailId,
+                c.TelephoneNumber,
+                c.DomicileCountry,
+                c.StateOfDomicile,
+                c.CreatedOn.ToString("MM-dd-yyyy")))
+            .ToListAsync();
+        return (items, total);
+    }
+
+    // ── Detail ─────────────────────────────────────────────────────────────────
+    public async Task<ClientDetailDto?> GetDetailAsync(long clientId)
+    {
+        var c = await db.Clients
+            .Include(x => x.Addresses)
+            .Include(x => x.Contacts)
+            .Include(x => x.Offices)
+                .ThenInclude(o => o.SecondaryContacts)
+            .Include(x => x.Companies)
+                .ThenInclude(co => co.Addresses)
+            .Include(x => x.Companies)
+                .ThenInclude(co => co.Contacts)
+            .FirstOrDefaultAsync(x => x.Id == clientId);
+
+        if (c == null) return null;
+
+        var legal   = c.Addresses.FirstOrDefault(a => a.AddressType == "Legal");
+        var mailing = c.Addresses.FirstOrDefault(a => a.AddressType == "Mailing");
+        var contact = c.Contacts.FirstOrDefault(ct => ct.ContactType == "Primary");
+        var secondaryContacts = c.Contacts
+            .Where(ct => ct.ContactType == "Secondary")
+            .OrderBy(ct => ct.SortOrder)
+            .Select(ct => MapContact(ct)!)
+            .ToList();
+
+        return new ClientDetailDto(
+            c.Id,
+            c.ClientCode ?? c.Id.ToString("D5"),
+            c.CompanyName,
+            c.Status,
+            c.TypeOfCompany,
+            c.NaicCode,
+            c.RegisteredTradeMark,
+            c.DomicileCountry,
+            c.StateOfDomicile,
+            c.StateAllowedToOperate,
+            c.FederalTaxId,
+            c.OwnedBy,
+            c.NumberOfEmployees,
+            c.EstDirectWrittenPremium,
+            c.YearBusinessStarted,
+            c.BusinessDescription,
+            c.EmailId,
+            c.TelephoneNumber,
+            c.TelephoneNumberCc,
+            c.Extension,
+            c.ClientUrl,
+            c.ClientOnboardingDate?.ToString("MM-dd-yyyy"),
+            c.ClientRegistrationDate?.ToString("MM-dd-yyyy"),
+            c.LogoData != null ? Convert.ToBase64String(c.LogoData) : null,
+            c.LogoContentType,
+            MapAddress(legal),
+            MapAddress(mailing),
+            MapContact(contact),
+            secondaryContacts,
+            c.Offices.Select(MapOffice).ToList(),
+            c.Companies.Select(MapCompany).ToList(),
+            c.CreatedOn.ToString("MM-dd-yyyy"),
+            c.UpdatedOn?.ToString("MM-dd-yyyy")
+        );
+    }
+
+    // ── Update client info ─────────────────────────────────────────────────────
+    public async Task UpdateInfoAsync(long clientId, SaveClientInfoRequest req, long userId)
+    {
+        var c = await db.Clients.FindAsync(clientId)
+            ?? throw new KeyNotFoundException($"Client {clientId} not found.");
+
+        c.CompanyName = req.CompanyName;
+        c.TypeOfCompany = req.TypeOfCompany;
+        c.NaicCode = req.NaicCode;
+        c.RegisteredTradeMark = req.RegisteredTradeMark;
+        c.DomicileCountry = req.DomicileCountry;
+        c.StateOfDomicile = req.StateOfDomicile;
+        c.StateAllowedToOperate = req.StateAllowedToOperate;
+        c.FederalTaxId = req.FederalTaxId;
+        c.OwnedBy = req.OwnedBy;
+        c.NumberOfEmployees = req.NumberOfEmployees;
+        c.EstDirectWrittenPremium = req.EstDirectWrittenPremium;
+        c.YearBusinessStarted = req.YearBusinessStarted;
+        c.BusinessDescription = req.BusinessDescription;
+        c.EmailId = req.EmailId;
+        c.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        c.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
+        c.Extension = req.Extension;
+        c.ClientUrl = req.ClientUrl;
+        c.Status = req.Status ?? c.Status;
+        if (DateOnly.TryParse(req.ClientOnboardingDate, out var od)) c.ClientOnboardingDate = od;
+        if (!string.IsNullOrEmpty(req.LogoBase64))
+        {
+            c.LogoData = Convert.FromBase64String(req.LogoBase64);
+            c.LogoContentType = req.LogoContentType;
+            c.LogoFileName = req.LogoFileName;
+        }
+        c.UpdatedBy = userId;
+        c.UpdatedOn = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    // ── Address ────────────────────────────────────────────────────────────────
+    public async Task SaveAddressAsync(long clientId, SaveAddressRequest req, long userId)
+    {
+        var addr = await db.ClientAddresses
+            .FirstOrDefaultAsync(a => a.ClientId == clientId && a.AddressType == req.AddressType);
+
+        if (addr == null)
+        {
+            addr = new ClientAddress { ClientId = clientId };
+            db.ClientAddresses.Add(addr);
+        }
+        addr.AddressType = req.AddressType;
+        addr.AddressLine1 = req.AddressLine1;
+        addr.AddressLine2 = req.AddressLine2;
+        addr.Country = req.Country;
+        addr.State = req.State;
+        addr.City = req.City;
+        addr.County = req.County;
+        addr.ZipCode = req.ZipCode;
+        addr.Latitude = req.Latitude;
+        addr.Longitude = req.Longitude;
+        addr.IsManual = req.IsManual;
+        addr.IsSameAsLegal = req.AddressType == "Mailing" && req.IsSameAsLegal;
+        await db.SaveChangesAsync();
+    }
+
+    // ── Contact ────────────────────────────────────────────────────────────────
+    public async Task SaveContactAsync(long clientId, SaveContactRequest req, long userId)
+    {
+        await UpsertPrimaryContactAsync(clientId, req);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task SaveContactsAsync(long clientId, SaveContactsRequest req, long userId)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await UpsertPrimaryContactAsync(clientId, req.Primary);
+
+        var existing = await db.ClientContacts
+            .Where(c => c.ClientId == clientId && c.ContactType == "Secondary")
+            .ToListAsync();
+        db.ClientContacts.RemoveRange(existing);
+        // Flush deletes first so re-inserted sort orders don't collide with the unique index.
+        await db.SaveChangesAsync();
+
+        var order = 1;
+        foreach (var s in req.SecondaryContacts ?? [])
+        {
+            var ct = new ClientContact { ClientId = clientId, ContactType = "Secondary", SortOrder = order++ };
+            ApplyContact(ct, s);
+            db.ClientContacts.Add(ct);
+        }
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+    }
+
+    private async Task UpsertPrimaryContactAsync(long clientId, SaveContactRequest req)
+    {
+        var ct = await db.ClientContacts
+            .FirstOrDefaultAsync(c => c.ClientId == clientId && c.ContactType == "Primary");
+
+        if (ct == null)
+        {
+            ct = new ClientContact { ClientId = clientId, ContactType = "Primary" };
+            db.ClientContacts.Add(ct);
+        }
+        ApplyContact(ct, req);
+    }
+
+    private static void ApplyContact(ClientContact ct, SaveContactRequest req)
+    {
+        ct.Name = req.Name;
+        ct.Suffix = req.Suffix;
+        ct.Title = req.Title;
+        ct.EmailId = req.EmailId;
+        ct.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        ct.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
+        ct.Extension = req.Extension;
+        ct.AltTelephoneNumber = NormalizeOptionalPhone(req.AltTelephoneNumber);
+        ct.AltTelephoneNumberCc = PhoneCountryCode(req.AltTelephoneNumber, req.AltTelephoneNumberCc);
+    }
+
+    // ── Office ─────────────────────────────────────────────────────────────────
+    public async Task<long> SaveOfficeAsync(long clientId, SaveOfficeRequest req, long userId)
+    {
+        ClientOffice office;
+        if (req.Id.HasValue)
+        {
+            office = await db.ClientOffices
+                .Include(o => o.SecondaryContacts)
+                .FirstOrDefaultAsync(o => o.Id == req.Id.Value && o.ClientId == clientId)
+                ?? throw new KeyNotFoundException("Office not found.");
+            office.UpdatedBy = userId;
+            office.UpdatedOn = DateTimeOffset.UtcNow;
+        }
+        else
+        {
+            office = new ClientOffice { ClientId = clientId, CreatedBy = userId, CreatedOn = DateTimeOffset.UtcNow };
+            db.ClientOffices.Add(office);
+        }
+        office.OfficeName = req.OfficeName;
+        office.OfficeType = req.OfficeType;
+        office.AddressLine1 = req.AddressLine1;
+        office.AddressLine2 = req.AddressLine2;
+        office.Country = req.Country;
+        office.State = req.State;
+        office.City = req.City;
+        office.County = req.County;
+        office.ZipCode = req.ZipCode;
+        office.Latitude = req.Latitude;
+        office.Longitude = req.Longitude;
+        office.ContactName = req.ContactName;
+        office.ContactSuffix = req.ContactSuffix;
+        office.ContactTitle = req.ContactTitle;
+        office.ContactEmail = req.ContactEmail;
+        office.ContactPhone = NormalizeOptionalPhone(req.ContactPhone);
+        office.ContactPhoneCc = PhoneCountryCode(req.ContactPhone, req.ContactPhoneCc);
+        office.ContactExt = req.ContactExt;
+        office.ContactAltPhone = NormalizeOptionalPhone(req.ContactAltPhone);
+        office.ContactAltPhoneCc = PhoneCountryCode(req.ContactAltPhone, req.ContactAltPhoneCc);
+
+        // Secondary contacts are replaced wholesale on every save (no unique index to collide with).
+        office.SecondaryContacts.Clear();
+        var order = 1;
+        foreach (var s in req.SecondaryContacts ?? [])
+        {
+            office.SecondaryContacts.Add(new ClientOfficeContact
+            {
+                SortOrder = order++,
+                Name = s.Name,
+                Suffix = s.Suffix,
+                Title = s.Title,
+                EmailId = s.EmailId,
+                TelephoneNumber = NormalizeOptionalPhone(s.TelephoneNumber),
+                TelephoneNumberCc = PhoneCountryCode(s.TelephoneNumber, s.TelephoneNumberCc),
+                Extension = s.Extension,
+                AltTelephoneNumber = NormalizeOptionalPhone(s.AltTelephoneNumber),
+                AltTelephoneNumberCc = PhoneCountryCode(s.AltTelephoneNumber, s.AltTelephoneNumberCc),
+            });
+        }
+        await db.SaveChangesAsync();
+        return office.Id;
+    }
+
+    public async Task DeleteOfficeAsync(long clientId, long officeId)
+    {
+        var office = await db.ClientOffices
+            .FirstOrDefaultAsync(o => o.Id == officeId && o.ClientId == clientId)
+            ?? throw new KeyNotFoundException("Office not found.");
+        db.ClientOffices.Remove(office);
+        await db.SaveChangesAsync();
+    }
+
+    // ── Company ────────────────────────────────────────────────────────────────
+    public async Task<long> SaveCompanyAsync(long clientId, SaveCompanyRequest req, long userId)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        ClientCompany company;
+        if (req.Id.HasValue)
+        {
+            company = await db.ClientCompanies
+                .Include(x => x.Addresses)
+                .Include(x => x.Contacts)
+                .FirstOrDefaultAsync(c => c.Id == req.Id.Value && c.ClientId == clientId)
+                ?? throw new KeyNotFoundException("Company not found.");
+            company.UpdatedBy = userId;
+            company.UpdatedOn = DateTimeOffset.UtcNow;
+        }
+        else
+        {
+            // Serialize per-client numbering so two concurrent creates cannot receive the same code.
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({clientId})");
+            var existingCodes = await db.ClientCompanies
+                .Where(c => c.ClientId == clientId)
+                .Select(c => c.CompanyCode)
+                .ToListAsync();
+            var usedNumbers = existingCodes
+                .Select(code => long.TryParse(code, out var number) ? number : 0)
+                .Where(number => number > 0)
+                .ToHashSet();
+            var companyNumber = existingCodes.Count + 1L;
+            while (usedNumbers.Contains(companyNumber)) companyNumber++;
+            company = new ClientCompany
+            {
+                ClientId = clientId,
+                CompanyCode = companyNumber.ToString("D5"),
+                CreatedBy = userId,
+                CreatedOn = DateTimeOffset.UtcNow
+            };
+            db.ClientCompanies.Add(company);
+        }
+        company.CompanyName = req.CompanyName;
+        company.DomicileCountry = req.DomicileCountry;
+        company.StateOfDomicile = req.StateOfDomicile;
+        company.NaicCode = req.NaicCode;
+        company.EmailId = req.EmailId;
+        company.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        company.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
+        company.Extension = req.Extension;
+        company.FederalTaxId = req.FederalTaxId;
+        company.Url = req.Url;
+        company.BusinessDescription = req.BusinessDescription;
+        company.Status = req.Status ?? company.Status;
+        if (!string.IsNullOrEmpty(req.LogoBase64))
+        {
+            company.LogoData = Convert.FromBase64String(req.LogoBase64);
+            company.LogoContentType = req.LogoContentType;
+            company.LogoFileName = req.LogoFileName;
+        }
+        await db.SaveChangesAsync();
+
+        if (req.LegalAddress != null) await SaveCompanyAddressInternalAsync(company.Id, req.LegalAddress with { AddressType = "Legal" });
+        if (req.MailingAddress != null) await SaveCompanyAddressInternalAsync(company.Id, req.MailingAddress with { AddressType = "Mailing" });
+        if (req.PrimaryContact != null) await SaveCompanyContactInternalAsync(company.Id, req.PrimaryContact);
+
+        if (req.SecondaryContacts is { } secondary)
+        {
+            var oldSecondary = await db.CompanyContacts
+                .Where(c => c.CompanyId == company.Id && c.ContactType != "Primary")
+                .ToListAsync();
+            db.CompanyContacts.RemoveRange(oldSecondary);
+            for (var i = 0; i < secondary.Count; i++)
+            {
+                var item = secondary[i];
+                db.CompanyContacts.Add(new CompanyContact
+                {
+                    CompanyId = company.Id,
+                    ContactType = $"Secondary{i + 1}",
+                    Name = item.Name,
+                    Suffix = item.Suffix,
+                    Title = item.Title,
+                    EmailId = item.EmailId,
+                    TelephoneNumber = NormalizeOptionalPhone(item.TelephoneNumber),
+                    TelephoneNumberCc = PhoneCountryCode(item.TelephoneNumber, item.TelephoneNumberCc),
+                    Extension = item.Extension,
+                    AltTelephoneNumber = NormalizeOptionalPhone(item.AltTelephoneNumber),
+                    AltTelephoneNumberCc = PhoneCountryCode(item.AltTelephoneNumber, item.AltTelephoneNumberCc)
+                });
+            }
+        }
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return company.Id;
+    }
+
+    public async Task DeleteCompanyAsync(long clientId, long companyId)
+    {
+        var company = await db.ClientCompanies
+            .FirstOrDefaultAsync(c => c.Id == companyId && c.ClientId == clientId)
+            ?? throw new KeyNotFoundException("Company not found.");
+        db.ClientCompanies.Remove(company);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task SaveCompanyAddressAsync(long clientId, long companyId, SaveAddressRequest req)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        await SaveCompanyAddressInternalAsync(companyId, req);
+    }
+
+    private async Task SaveCompanyAddressInternalAsync(long companyId, SaveAddressRequest req)
+    {
+        var addr = await db.CompanyAddresses
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.AddressType == req.AddressType);
+
+        if (addr == null)
+        {
+            addr = new CompanyAddress { CompanyId = companyId };
+            db.CompanyAddresses.Add(addr);
+        }
+        addr.AddressType = req.AddressType;
+        addr.AddressLine1 = req.AddressLine1;
+        addr.AddressLine2 = req.AddressLine2;
+        addr.Country = req.Country;
+        addr.State = req.State;
+        addr.City = req.City;
+        addr.County = req.County;
+        addr.ZipCode = req.ZipCode;
+        addr.Latitude = req.Latitude;
+        addr.Longitude = req.Longitude;
+        addr.IsManual = req.IsManual;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task SaveCompanyContactAsync(long clientId, long companyId, SaveContactRequest req)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        await SaveCompanyContactInternalAsync(companyId, req);
+    }
+
+    private async Task SaveCompanyContactInternalAsync(long companyId, SaveContactRequest req)
+    {
+        var ct = await db.CompanyContacts
+            .FirstOrDefaultAsync(c => c.CompanyId == companyId && c.ContactType == "Primary");
+
+        if (ct == null)
+        {
+            ct = new CompanyContact { CompanyId = companyId, ContactType = "Primary" };
+            db.CompanyContacts.Add(ct);
+        }
+        ct.Name = req.Name;
+        ct.Suffix = req.Suffix;
+        ct.Title = req.Title;
+        ct.EmailId = req.EmailId;
+        ct.TelephoneNumber = NormalizeOptionalPhone(req.TelephoneNumber);
+        ct.TelephoneNumberCc = PhoneCountryCode(req.TelephoneNumber, req.TelephoneNumberCc);
+        ct.Extension = req.Extension;
+        ct.AltTelephoneNumber = NormalizeOptionalPhone(req.AltTelephoneNumber);
+        ct.AltTelephoneNumberCc = PhoneCountryCode(req.AltTelephoneNumber, req.AltTelephoneNumberCc);
+        await db.SaveChangesAsync();
+    }
+
+    private static string? NormalizeOptionalPhone(string? phone) =>
+        string.IsNullOrWhiteSpace(phone) ? null : ClientValidator.NormalizePhone(phone);
+
+    private static string? PhoneCountryCode(string? phone, string? countryCode) =>
+        string.IsNullOrWhiteSpace(phone) ? countryCode : countryCode ?? "+1";
+
+    // ── Products ───────────────────────────────────────────────────────────────
+    public async Task<List<ProductDto>> GetAllProductsAsync()
+        => await db.InsuranceProducts
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.Category).ThenBy(p => p.ProductName)
+            .Select(p => new ProductDto(p.Id, p.ProductName, p.Category))
+            .ToListAsync();
+
+    public async Task<List<ProductAccessDto>> GetProductAccessAsync(long clientId, long companyId)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        var products = await db.InsuranceProducts
+            .Include(p => p.SubProducts)
+            .Where(p => p.IsActive)
+            .ToListAsync();
+
+        var accessList = await db.CompanyProductAccess
+            .Include(a => a.SelectedSubProducts).ThenInclude(sp => sp.SubProduct)
+            .Include(a => a.Jurisdictions)
+            .Where(a => a.CompanyId == companyId)
+            .ToListAsync();
+
+        return products.Select(p =>
+        {
+            var access = accessList.FirstOrDefault(a => a.ProductId == p.Id);
+            var selectedIds = access?.SelectedSubProducts.Select(s => s.SubProductId).ToHashSet() ?? [];
+            return new ProductAccessDto(
+                p.Id,
+                p.ProductName,
+                p.Category,
+                selectedIds.Count,
+                access?.Jurisdictions.Count ?? 0,
+                p.SubProducts.Select(s => new SubProductDto(s.Id, s.SubProductName, selectedIds.Contains(s.Id))).ToList(),
+                access?.Jurisdictions.Select(j => new JurisdictionDto(j.StateCode, j.StateName)).ToList() ?? []
+            );
+        }).ToList();
+    }
+
+    public async Task SaveProductAccessAsync(long clientId, long companyId, SaveProductAccessRequest req)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        if (req.SubProductIds is null || req.Jurisdictions is null)
+            throw new ArgumentException("Sub-products and jurisdictions are required.");
+        var product = await db.InsuranceProducts
+            .Include(p => p.SubProducts)
+            .FirstOrDefaultAsync(p => p.Id == req.ProductId && p.IsActive)
+            ?? throw new KeyNotFoundException("Product not found.");
+        var validSubProductIds = product.SubProducts.Select(s => s.Id).ToHashSet();
+        if (req.SubProductIds.Distinct().Any(id => !validSubProductIds.Contains(id)))
+            throw new ArgumentException("One or more sub-products are invalid for the selected product.");
+        if (req.Jurisdictions.GroupBy(j => j.StateCode, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+            throw new ArgumentException("Duplicate jurisdictions are not allowed.");
+        var requestedCodes = req.Jurisdictions
+            .Select(j => j.StateCode.Trim().ToUpperInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (requestedCodes.Count > 0)
+        {
+            var knownCodes = (await db.Database
+                .SqlQueryRaw<string>("SELECT code AS \"Value\" FROM state WHERE country_code = 'US'")
+                .ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!requestedCodes.IsSubsetOf(knownCodes))
+                throw new ArgumentException("One or more jurisdictions are invalid.");
+        }
+        var access = await db.CompanyProductAccess
+            .Include(a => a.SelectedSubProducts)
+            .Include(a => a.Jurisdictions)
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.ProductId == req.ProductId);
+
+        if (access == null)
+        {
+            access = new CompanyProductAccess { CompanyId = companyId, ProductId = req.ProductId };
+            db.CompanyProductAccess.Add(access);
+            await db.SaveChangesAsync();
+        }
+
+        // Replace sub-products
+        db.CompanyProductSubProducts.RemoveRange(access.SelectedSubProducts);
+        foreach (var spId in req.SubProductIds)
+            db.CompanyProductSubProducts.Add(new CompanyProductSubProduct { AccessId = access.Id, SubProductId = spId });
+
+        // Replace jurisdictions
+        db.CompanyProductJurisdictions.RemoveRange(access.Jurisdictions);
+        foreach (var j in req.Jurisdictions)
+            db.CompanyProductJurisdictions.Add(new CompanyProductJurisdiction
+            {
+                AccessId = access.Id,
+                StateCode = j.StateCode.Trim().ToUpperInvariant(),
+                StateName = j.StateName.Trim()
+            });
+
+        await db.SaveChangesAsync();
+    }
+
+    public async Task DeleteProductAccessAsync(long clientId, long companyId, long productId)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        var access = await db.CompanyProductAccess
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.ProductId == productId)
+            ?? throw new KeyNotFoundException("Product assignment not found.");
+        db.CompanyProductAccess.Remove(access);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task EnsureCompanyOwnedAsync(long clientId, long companyId)
+    {
+        if (!await db.ClientCompanies.AnyAsync(c => c.Id == companyId && c.ClientId == clientId))
+            throw new KeyNotFoundException("Company not found.");
+    }
+
+    // ── Mapping helpers ────────────────────────────────────────────────────────
+    private static AddressDto? MapAddress(ClientAddress? a) => a == null ? null : new AddressDto(
+        a.Id, a.AddressType, a.AddressLine1, a.AddressLine2,
+        a.Country, a.State, a.City, a.County, a.ZipCode, a.Latitude, a.Longitude, a.IsManual, a.IsSameAsLegal);
+
+    private static AddressDto? MapCompanyAddress(CompanyAddress? a, bool isSameAsLegal = false) => a == null ? null : new AddressDto(
+        a.Id, a.AddressType, a.AddressLine1, a.AddressLine2,
+        a.Country, a.State, a.City, a.County, a.ZipCode, a.Latitude, a.Longitude, a.IsManual, isSameAsLegal);
+
+    private static bool SameAddress(CompanyAddress? left, CompanyAddress? right) => left != null && right != null
+        && left.AddressLine1 == right.AddressLine1 && left.AddressLine2 == right.AddressLine2
+        && left.Country == right.Country && left.State == right.State && left.City == right.City
+        && left.County == right.County && left.ZipCode == right.ZipCode
+        && left.Latitude == right.Latitude && left.Longitude == right.Longitude;
+
+    private static ContactDto? MapContact(ClientContact? c) => c == null ? null : new ContactDto(
+        c.Id, c.ContactType, c.Name, c.Suffix, c.Title, c.EmailId,
+        c.TelephoneNumber, c.TelephoneNumberCc, c.Extension,
+        c.AltTelephoneNumber, c.AltTelephoneNumberCc);
+
+    private static ContactDto? MapCompanyContact(CompanyContact? c) => c == null ? null : new ContactDto(
+        c.Id, c.ContactType, c.Name, c.Suffix, c.Title, c.EmailId,
+        c.TelephoneNumber, c.TelephoneNumberCc, c.Extension,
+        c.AltTelephoneNumber, c.AltTelephoneNumberCc);
+
+    private static OfficeDto MapOffice(ClientOffice o) => new(
+        o.Id, o.OfficeName, o.OfficeType,
+        o.AddressLine1, o.AddressLine2, o.Country, o.State, o.City, o.County, o.ZipCode, o.Latitude, o.Longitude,
+        o.ContactName, o.ContactSuffix, o.ContactTitle, o.ContactEmail,
+        o.ContactPhone, o.ContactPhoneCc, o.ContactExt, o.ContactAltPhone, o.ContactAltPhoneCc,
+        o.SecondaryContacts.OrderBy(s => s.SortOrder).Select(s => new ContactDto(
+            s.Id, "Secondary", s.Name, s.Suffix, s.Title, s.EmailId,
+            s.TelephoneNumber, s.TelephoneNumberCc, s.Extension,
+            s.AltTelephoneNumber, s.AltTelephoneNumberCc)).ToList());
+
+    private static CompanyDto MapCompany(ClientCompany co)
+    {
+        var legal   = co.Addresses.FirstOrDefault(a => a.AddressType == "Legal");
+        var mailing = co.Addresses.FirstOrDefault(a => a.AddressType == "Mailing");
+        var contact = co.Contacts.FirstOrDefault(ct => ct.ContactType == "Primary");
+        var secondary = co.Contacts
+            .Where(ct => ct.ContactType != "Primary")
+            .OrderBy(ct => ct.ContactType)
+            .Select(ct => MapCompanyContact(ct)!)
+            .ToList();
+        return new CompanyDto(
+            co.Id, co.CompanyCode, co.CompanyName, co.Status,
+            co.DomicileCountry, co.StateOfDomicile, co.NaicCode,
+            co.EmailId, co.TelephoneNumber, co.TelephoneNumberCc, co.Extension,
+            co.FederalTaxId, co.Url, co.BusinessDescription,
+            co.LogoData != null ? Convert.ToBase64String(co.LogoData) : null,
+            co.LogoContentType,
+            MapCompanyAddress(legal),
+            MapCompanyAddress(mailing, SameAddress(legal, mailing)),
+            MapCompanyContact(contact),
+            secondary,
+            co.CreatedOn.ToString("MM-dd-yyyy"),
+            co.UpdatedOn?.ToString("MM-dd-yyyy")
+        );
+    }
+}
