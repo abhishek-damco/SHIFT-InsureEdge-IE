@@ -189,6 +189,46 @@ public class ClientValidatorTests
             .Should().Be("Provide valid Year Business Started to continue");
     }
 
+    [Fact]
+    public void Business_description_is_optional_and_enforces_five_to_one_thousand_trimmed_characters()
+    {
+        ClientValidator.ValidateBusinessDescription(null).Should().BeNull();
+        ClientValidator.ValidateBusinessDescription("   ").Should().BeNull();
+        ClientValidator.ValidateBusinessDescription("four").Should().Be(ClientValidator.BusinessDescriptionLengthError);
+        ClientValidator.ValidateBusinessDescription("five!").Should().BeNull();
+        ClientValidator.ValidateBusinessDescription(new string('a', 1000)).Should().BeNull();
+        ClientValidator.ValidateBusinessDescription(new string('a', 1001)).Should().Be(ClientValidator.BusinessDescriptionLengthError);
+    }
+
+    [Fact]
+    public void New_company_requires_logo_primary_fields_addresses_and_contact()
+    {
+        var blank = new SaveCompanyRequest(null, "", "United States", null, null, null, null, null, null,
+            null, null, null, "Active", null, null, null, null, null, null);
+        ClientValidator.ValidateCompany(blank).Should().Be("Provide Company Name to continue");
+
+        var noLogo = ValidCompany() with { LogoBase64 = null, LogoContentType = null };
+        ClientValidator.ValidateCompany(noLogo).Should().Be("Provide Company Logo to continue");
+    }
+
+    [Fact]
+    public void Valid_company_request_passes_server_validation()
+    {
+        ClientValidator.ValidateCompany(ValidCompany()).Should().BeNull();
+    }
+
+    private static SaveCompanyRequest ValidCompany()
+    {
+        var address = new SaveAddressRequest("Legal", "1 Main St", null, "United States", "California",
+            "Los Angeles", "Los Angeles", "90001", null, null, true);
+        var contact = new SaveContactRequest("Alex Mercer", null, "Admin", "alex@example.com",
+            "5551234567", "+1", null, null, "+1");
+        return new SaveCompanyRequest(null, "Acme Insurance", "United States", "California", "12345",
+            null, null, null, null, "23-4567890", null, null, "Active",
+            Convert.ToBase64String(new byte[10 * 1024]), "image/png", "logo.png",
+            address, address with { AddressType = "Mailing" }, contact, []);
+    }
+
     private static SaveClientInfoRequest ValidInfo() => new(
         "Hudson Bailey Insurance", "MGA", "12345", null, "United States", "California", null,
         "23-4567890", null, null, null, null, "Hudson Bailey Insurance - Primary tenant",

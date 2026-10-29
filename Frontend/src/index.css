@@ -8372,3 +8372,123 @@ span.ap-th-lbl { cursor: default; }
 .cm-scope .google-suggestion-secondary { color: #505861; font-size: 11px; }
 .cm-scope .google-suggestions-powered { padding: 2px 6px; color: #8a929b; font-size: 10px; text-align: right; }
 .cm-scope .google-suggestions-powered span { color: #4285f4; font-weight: 600; }
+
+/* Client Company add/edit content panel — matched to the source recording. */
+.cm-company-form {
+  padding: 0 12px 10px;
+  background: #fff;
+  color: #111827;
+}
+.cm-company-form .cm-company-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 24%) minmax(0, 1fr);
+  align-items: stretch;
+}
+.cm-company-form .cm-company-primary-column {
+  min-width: 0;
+  padding-right: 12px;
+  border-right: 1px solid #e2e5e9;
+}
+.cm-company-form .cm-company-detail-column {
+  min-width: 0;
+  padding-left: 12px;
+}
+.cm-company-form .cm-company-section {
+  padding: 12px 0 2px;
+  border-bottom: 1px solid #e2e5e9;
+}
+.cm-company-form .cm-company-primary-section {
+  height: 100%;
+  box-sizing: border-box;
+  border-bottom: 0;
+}
+.cm-company-form .cm-company-section-heading {
+  min-height: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.cm-company-form .cm-company-section-heading h3,
+.cm-company-form .cm-company-section-title {
+  margin: 0 0 10px;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+.cm-company-form .cm-company-section-heading label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #111827;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cm-company-form .fc,
+.cm-company-form .fg-mb { margin-bottom: 10px; }
+.cm-company-form .fg2,
+.cm-company-form .fg3 { column-gap: 12px; row-gap: 0; }
+.cm-company-form .fg2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cm-company-form .fg3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cm-company-form .fl,
+.cm-company-form .fl-plain,
+.cm-company-form .contact-name {
+  color: #111827;
+  font-size: 11px;
+  line-height: 1.25;
+  font-weight: 500;
+}
+.cm-company-form .contact-name { font-weight: 700; }
+.cm-company-form .fi,
+.cm-company-form .cs-select,
+.cm-company-form .ph-wrap,
+.cm-company-form .ph-input,
+.cm-company-form .fc > .relative > button {
+  min-height: 28px;
+  height: 28px;
+  border-radius: 2px;
+  font-size: 11px;
+  background-color: #f7f8fc;
+}
+.cm-company-form .fc > .relative > button { padding: 3px 8px; }
+.cm-company-form .manual-chk {
+  gap: 5px;
+  margin-bottom: 10px;
+  color: #111827;
+  font-size: 11px;
+}
+.cm-company-form .ferr {
+  margin-top: 3px;
+  font-size: 10px;
+}
+.cm-company-form .contact-blk {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e5e9;
+}
+.cm-company-form .btn-add-contacts {
+  border: 1px solid #0B5AA0;
+  background: #fff;
+  color: #0B5AA0;
+}
+.cm-company-form .btn-add-contacts:not(:disabled):hover {
+  background: #0B5AA0;
+  color: #fff;
+}
+@media (max-width: 760px) {
+  .cm-company-form .cm-company-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cm-company-form .cm-company-primary-column {
+    padding-right: 0;
+    border-right: 0;
+  }
+  .cm-company-form .cm-company-detail-column {
+    padding-left: 0;
+  }
+  .cm-company-form .cm-company-primary-section {
+    border-bottom: 1px solid #e2e5e9;
+  }
+}

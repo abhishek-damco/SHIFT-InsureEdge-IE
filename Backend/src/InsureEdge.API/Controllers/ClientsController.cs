@@ -96,6 +96,8 @@ public class ClientsController(ClientService clients, ICurrentTenantService tena
     [HttpPost("me/companies")]
     public async Task<IActionResult> SaveCompany([FromBody] SaveCompanyRequest req)
     {
+        if (ClientValidator.ValidateCompany(req) is { } error)
+            return BadRequest(new { error });
         var id = await clients.SaveCompanyAsync(req);
         return Ok(new { id });
     }
@@ -112,6 +114,7 @@ public class ClientsController(ClientService clients, ICurrentTenantService tena
     [HttpPut("me/companies/{companyId:long}/address")]
     public async Task<IActionResult> SaveCompanyAddress(long companyId, [FromBody] SaveAddressRequest req)
     {
+        if (ClientValidator.ValidateAddress(req) is { } error) return BadRequest(new { error });
         await clients.SaveCompanyAddressAsync(companyId, req);
         return NoContent();
     }
@@ -120,6 +123,7 @@ public class ClientsController(ClientService clients, ICurrentTenantService tena
     [HttpPut("me/companies/{companyId:long}/contact")]
     public async Task<IActionResult> SaveCompanyContact(long companyId, [FromBody] SaveContactRequest req)
     {
+        if (ClientValidator.ValidateContact(req) is { } error) return BadRequest(new { error });
         await clients.SaveCompanyContactAsync(companyId, req);
         return NoContent();
     }
@@ -128,16 +132,36 @@ public class ClientsController(ClientService clients, ICurrentTenantService tena
     [HttpGet("me/companies/{companyId:long}/products")]
     public async Task<IActionResult> GetProductAccess(long companyId)
     {
-        var result = await clients.GetProductAccessAsync(companyId);
-        return Ok(result);
+        try
+        {
+            var result = await clients.GetProductAccessAsync(companyId);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
     }
 
     // PUT api/clients/me/companies/{companyId}/products
     [HttpPut("me/companies/{companyId:long}/products")]
     public async Task<IActionResult> SaveProductAccess(long companyId, [FromBody] SaveProductAccessRequest req)
     {
-        await clients.SaveProductAccessAsync(companyId, req);
-        return NoContent();
+        try
+        {
+            await clients.SaveProductAccessAsync(companyId, req);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpDelete("me/companies/{companyId:long}/products/{productId:long}")]
+    public async Task<IActionResult> DeleteProductAccess(long companyId, long productId)
+    {
+        try
+        {
+            await clients.DeleteProductAccessAsync(companyId, productId);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
     }
 
     // GET api/clients/reference/products — all LOB products for UI dropdowns

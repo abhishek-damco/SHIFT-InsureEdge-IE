@@ -64,6 +64,7 @@ export function AddressFields({
   zipLabel,
   maxLengths = DEFAULT_MAX_LENGTHS,
   confirmUncheck = true,
+  trailingColumns = 2,
 }: {
   value: AddressFieldsValue;
   errors?: Partial<Record<AddressFieldName, string>>;
@@ -78,6 +79,7 @@ export function AddressFields({
   zipLabel?: string;
   maxLengths?: Partial<Record<AddressFieldName, number>>;
   confirmUncheck?: boolean;
+  trailingColumns?: 2 | 3;
 }) {
   const [confirming, setConfirming] = useState(false);
   const entryDisabled = disabled || !value.enterManually;
@@ -138,12 +140,12 @@ export function AddressFields({
       <div className="fc"><label className="fl"><span className="req">*</span> {stateLabel ?? fv.stateLabel(countryName)}</label><ClearSelect value={value.state} onChange={next => onChange('state', next)} options={stateOptions} placeholder="Select..." disabled={disabled} /><ErrorText message={errors.state} /></div>
       <div className="fc"><label className="fl"><span className="req">*</span> City</label><input className={`fi${errors.city ? ' fi--err' : ''}${entryDisabled ? ' fi--disabled' : ''}`} value={value.city} onChange={event => onChange('city', event.target.value)} disabled={entryDisabled} maxLength={limits.city} /><ErrorText message={errors.city} /></div>
     </div>
-    <div className={countyVisible ? 'fg2 fg-mb' : 'fg1 fg-mb'}>
+    <div className={countyVisible ? (trailingColumns === 3 ? 'fg3 fg-mb' : 'fg2 fg-mb') : 'fg1 fg-mb'}>
       {countyVisible && <div className="fc"><label className={countyRequired ? 'fl' : 'fl-plain'}>{countyRequired && <span className="req">* </span>}County</label><input className={`fi${errors.county ? ' fi--err' : ''}${entryDisabled ? ' fi--disabled' : ''}`} value={value.county} onChange={event => onChange('county', event.target.value)} disabled={entryDisabled} maxLength={limits.county} /><ErrorText message={errors.county} /></div>}
       <div className="fc"><label className="fl"><span className="req">*</span> {zipLabel ?? fv.zipLabel(countryName)}</label><input className={`fi${errors.zipCode ? ' fi--err' : ''}${entryDisabled ? ' fi--disabled' : ''}`} value={value.zipCode} onChange={event => onChange('zipCode', event.target.value)} disabled={entryDisabled} maxLength={limits.zipCode} /><ErrorText message={errors.zipCode} /></div>
     </div>
     {/* UM-12: Latitude / Longitude stay disabled until Enter Address Manually is checked. */}
-    <div className="fg2 fg-mb">
+    <div className={trailingColumns === 3 ? 'fg3 fg-mb' : 'fg2 fg-mb'}>
       <div className="fc"><label className="fl-plain">Latitude</label><input className={`fi${coordinatesReadOnly ? ' fi--ro' : ''}${entryDisabled ? ' fi--disabled' : ''}`} value={value.latitude} onChange={event => onChange('latitude', event.target.value)} readOnly={coordinatesReadOnly} disabled={entryDisabled} /></div>
       <div className="fc"><label className="fl-plain">Longitude</label><input className={`fi${coordinatesReadOnly ? ' fi--ro' : ''}${entryDisabled ? ' fi--disabled' : ''}`} value={value.longitude} onChange={event => onChange('longitude', event.target.value)} readOnly={coordinatesReadOnly} disabled={entryDisabled} /></div>
     </div>

@@ -21,10 +21,11 @@ import {
   formatPhoneWithFlag, toContactRequest, validateContactList,
 } from './ClientManagement/ClientFormFields';
 import { OfficeLocations } from './ClientManagement/OfficeLocations';
+import { ClientCompanyInformation, ClientCompanyProducts } from './ClientManagement/ClientCompanySections';
 import {
-  CANADA, COMPANY_TYPES, COUNTRIES, EST_DWP_OPTIONS, type Errors, US_STATES as US_STATE_NAMES,
+  BUSINESS_DESCRIPTION_MAX, CANADA, COMPANY_TYPES, COUNTRIES, EST_DWP_OPTIONS, type Errors, US_STATES as US_STATE_NAMES,
   apiErrorMessage, digitsOnly, formatFederalTaxId, regionOptions, stateLabel, todayMmDdYyyy,
-  validateAddress, validateClientInfo, zipLabel,
+  validateAddress, validateBusinessDescription, validateClientInfo, zipLabel,
 } from './ClientManagement/validation';
 
 // ── Styles (matching app design system) ───────────────────────────────────────
@@ -183,18 +184,20 @@ function ReadField({ label, value }: { label: string; value?: string | number | 
   );
 }
 
-function EditField({ label, value, onChange, textarea }: {
+function EditField({ label, value, onChange, textarea, maxLength, error }: {
   label: string; value?: string | number | null;
-  onChange: (v: string) => void; textarea?: boolean;
+  onChange: (v: string) => void; textarea?: boolean; maxLength?: number; error?: string;
 }) {
   return (
     <label style={{ display: 'grid', gap: 5, fontSize: 13, color: '#111827', fontWeight: 500 }}>
       {label}
       {textarea
-        ? <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} rows={3}
-            style={{ ...inp, height: 'auto', padding: '6px 10px', resize: 'vertical' }} />
-        : <input value={value ?? ''} onChange={e => onChange(e.target.value)} style={inp} />
+        ? <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} rows={3} maxLength={maxLength}
+            style={{ ...inp, height: 'auto', padding: '6px 10px', resize: 'vertical', borderColor: error ? '#dc2626' : inp.borderColor }} />
+        : <input value={value ?? ''} onChange={e => onChange(e.target.value)} maxLength={maxLength}
+            style={{ ...inp, borderColor: error ? '#dc2626' : inp.borderColor }} />
       }
+      {error && <span className="ferr">{error}</span>}
     </label>
   );
 }
@@ -343,6 +346,7 @@ function CompanyModal({ company, onSave, onClose }: {
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [businessDescriptionError, setBusinessDescriptionError] = useState('');
 
   const upLegal = (k: keyof SaveAddressRequest, v: string) =>
     setForm(f => ({ ...f, legalAddress: { ...f.legalAddress!, [k]: v } }));
@@ -353,6 +357,9 @@ function CompanyModal({ company, onSave, onClose }: {
 
   const handleSave = async () => {
     if (!form.companyName.trim()) { setErr('Company Name is required.'); return; }
+    const descriptionError = validateBusinessDescription(form.businessDescription);
+    setBusinessDescriptionError(descriptionError ?? '');
+    if (descriptionError) return;
     setSaving(true); setErr('');
     try { await onSave(form); onClose(); }
     catch { setErr('Failed to save. Please try again.'); }
@@ -400,7 +407,9 @@ function CompanyModal({ company, onSave, onClose }: {
               <EditField label="Email ID" value={form.emailId} onChange={v => setForm(f => ({ ...f, emailId: v }))} />
               <EditField label="Telephone Number" value={form.telephoneNumber} onChange={v => setForm(f => ({ ...f, telephoneNumber: v }))} />
               <EditField label="Website URL" value={form.url} onChange={v => setForm(f => ({ ...f, url: v }))} />
-              <EditField label="Business Description" value={form.businessDescription} onChange={v => setForm(f => ({ ...f, businessDescription: v }))} textarea />
+              <EditField label="Business Description" value={form.businessDescription}
+                onChange={v => { setForm(f => ({ ...f, businessDescription: v })); setBusinessDescriptionError(''); }}
+                maxLength={BUSINESS_DESCRIPTION_MAX} error={businessDescriptionError} textarea />
             </div>
           </div>
 
@@ -772,7 +781,7 @@ function ClientInfoTab({ client, onRefresh, showToast }: {
                 <TextInput value={form.clientUrl} onChange={up('clientUrl')} maxLength={50} />
               </Field>
               <Field label="Business Description" error={errors.businessDescription} style={{ gridColumn: '1 / -1' }}>
-                <TextInput value={form.businessDescription} onChange={up('businessDescription')} maxLength={1000} error={errors.businessDescription} textarea />
+                <TextInput value={form.businessDescription} onChange={up('businessDescription')} maxLength={BUSINESS_DESCRIPTION_MAX} error={errors.businessDescription} textarea />
               </Field>
             </div>
             <SectionActions onCancel={() => setEditing(false)} onSave={save} saving={saving} />
@@ -1147,6 +1156,8 @@ export default function ClientManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'info' | 'companies' | 'products'>('info');
+  const [companyDraftActive, setCompanyDraftActive] = useState(false);
+  const [showCancelDraft, setShowCancelDraft] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const showToast = (msg: string, ok = true) => {
@@ -1199,13 +1210,25 @@ export default function ClientManagementPage() {
 
       {/* Tab content */}
       {activeTab === 'info' && <ClientInfoTab client={client} onRefresh={load} showToast={showToast} />}
-      {activeTab === 'companies' && <CompanyInfoTab client={client} onRefresh={load} showToast={showToast} />}
-      {activeTab === 'products' && <ProductsTab client={client} />}
+      {activeTab === 'companies' && <ClientCompanyInformation client={client} refresh={load} toast={showToast} onDraftStateChange={setCompanyDraftActive} />}
+      {activeTab === 'products' && <ClientCompanyProducts client={client} toast={showToast} />}
 
       {/* Fixed footer with Back */}
       <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, height: 52, background: '#fff', boxShadow: '0 -2px 8px rgba(15,23,42,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 28px', zIndex: 35 }}>
-        <button onClick={() => window.history.back()} style={btnSecondary}>Back</button>
+        <button onClick={() => companyDraftActive && activeTab === 'companies' ? setShowCancelDraft(true) : window.history.back()} style={btnSecondary}>Back</button>
       </div>
+
+      {showCancelDraft && <div style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,.28)', display: 'grid', placeItems: 'center' }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="cancel-company-title" style={{ width: 250, background: '#fff', borderRadius: 5, boxShadow: '0 5px 16px rgba(0,0,0,.22)', padding: '14px 13px 10px', textAlign: 'center' }}>
+          <div aria-hidden="true" style={{ fontSize: 28, lineHeight: 1, marginBottom: 8 }}>⚠</div>
+          <strong id="cancel-company-title" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>Are you sure you want to cancel this?</strong>
+          <p style={{ margin: '0 0 12px', color: '#586273', fontSize: 10, lineHeight: 1.45 }}>Please confirm if you want to cancel your<br />current transactions. As your data is not saved?</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <button type="button" onClick={() => window.history.back()} style={{ height: 28, border: 0, borderRadius: 3, background: '#0B5AA0', color: '#fff', fontSize: 11, fontWeight: 600 }}>Continue</button>
+            <button type="button" onClick={() => setShowCancelDraft(false)} style={{ height: 28, border: '1px solid #d8dee6', borderRadius: 3, background: '#fff', color: '#0B5AA0', fontSize: 11 }}>Cancel</button>
+          </div>
+        </div>
+      </div>}
 
       {toast && <Toast msg={toast.msg} ok={toast.ok} />}
     </div>

@@ -20,10 +20,10 @@ const DEFAULT_PAGE_SIZE = 10;
 const ALL_ROWS_PAGE_SIZE = 10000;
 // QA UGM-06: OutSystems labels and order.
 const EXPORT_FORMATS = [
-  { fmt: 'PDF',  label: 'Download PDF',   icon: 'PDF', color: '#dc2626' },
-  { fmt: 'CSV',  label: 'Download CSV',   icon: 'CSV', color: '#16a34a' },
-  { fmt: 'XLSX', label: 'Download Excel', icon: 'XLS', color: '#15803d' },
-  { fmt: 'TXT',  label: 'Download Txt',   icon: 'TXT', color: '#4b5563' },
+  { fmt: 'PDF',  label: 'Download PDF',   icon: 'PDF' },
+  { fmt: 'CSV',  label: 'Download CSV',   icon: 'CSV' },
+  { fmt: 'XLSX', label: 'Download Excel', icon: 'XLS' },
+  { fmt: 'TXT',  label: 'Download Txt',   icon: 'TXT' },
 ];
 
 // â”€â”€â”€ Column definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -84,14 +84,25 @@ function DownloadIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v13" /><path d="m7 11 5 5 5-5" /><path d="M5 21h14" /></svg>;
 }
 
-// QA UGM-06: file-type icon for each Download option.
-function FileTypeIcon({ label, color }: { label: string; color: string }) {
+// QA UGM-06: compact monochrome file-type icons matching the reference menu.
+function FileTypeIcon({ label }: { label: string }) {
+  if (label === 'XLS') {
+    return (
+      <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden="true">
+        <path d="M3.5 1.5h8l4 4V20.5h-12z" fill="#fff" stroke="#20242a" />
+        <path d="M11.5 1.5v4h4" stroke="#20242a" strokeLinejoin="round" />
+        <path d="M1.5 9.5h12v9h-12zM1.5 12.5h12M1.5 15.5h12M5.5 9.5v9M9.5 9.5v9" fill="#fff" stroke="#20242a" strokeWidth=".8" />
+        <path d="m14.5 15.5 2 2 2-2M16.5 12.5v5" stroke="#20242a" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
   return (
-    <svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true">
-      <path d="M2 1h9l5 5v13H2z" fill="#fff" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
-      <path d="M11 1v5h5" fill="none" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
-      <rect x="0.5" y="10" width="15" height="7" rx="1.5" fill={color} />
-      <text x="8" y="15.6" textAnchor="middle" fontSize="5.2" fontWeight="700" fill="#fff" fontFamily="Arial, sans-serif">{label}</text>
+    <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden="true">
+      <path d="M3.5 1.5h8l4 4V20.5h-12z" fill="#fff" stroke="#20242a" strokeLinejoin="round" />
+      <path d="M11.5 1.5v4h4" stroke="#20242a" strokeLinejoin="round" />
+      <rect x="1.5" y="9" width="12" height="7" fill="#fff" stroke="#20242a" strokeWidth=".8" />
+      <text x="7.5" y="14" textAnchor="middle" fontSize={label === 'PDF' ? '4.1' : '4.3'} fontWeight="700" fill="#20242a" fontFamily="Arial, sans-serif">{label}</text>
     </svg>
   );
 }
@@ -227,6 +238,9 @@ export default function GroupListPage() {
   const [openFilterCol, setOpenFilterCol] = useState<ColKey | null>(null);
   const [filterAnchorRects, setFilterAnchorRects] = useState<Partial<Record<ColKey, DOMRect>>>({});
   const modifyColsRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(exportMenuRef, () => setExportOpen(false));
 
   // Visible columns (locked ones always shown)
   const [visibleCols, setVisibleCols] = useState<Set<ColKey>>(
@@ -350,7 +364,7 @@ export default function GroupListPage() {
 
         {/* Download split button */}
         {perms.download && (
-          <div style={{ position: 'relative' }}>
+          <div ref={exportMenuRef} style={{ position: 'relative' }}>
             <div style={{ display: 'flex', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
               <button className="btn-secondary" style={{ border: 'none', borderRadius: 0, padding: '7px 14px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 5 }}
                 onClick={() => handleExport('CSV', false)} disabled={exporting}>
@@ -367,11 +381,11 @@ export default function GroupListPage() {
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 230,
               }}>
                 {/* Downloads the ticked rows when any are ticked, otherwise every row. */}
-                {EXPORT_FORMATS.map(({ fmt, label, icon, color }) => (
+                {EXPORT_FORMATS.map(({ fmt, label, icon }) => (
                   <button key={fmt} className="btn-secondary"
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', border: 'none', borderBottom: '1px solid #f3f4f6', borderRadius: 0, padding: '9px 14px', fontSize: 13 }}
                     onClick={() => handleExport(fmt, selectedIds.length > 0)}>
-                    <FileTypeIcon label={icon} color={color} />
+                    <FileTypeIcon label={icon} />
                     {label}
                   </button>
                 ))}

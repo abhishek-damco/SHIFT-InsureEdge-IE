@@ -15,9 +15,10 @@ public interface IClientRepository
     Task DeleteOfficeAsync(long clientId, long officeId);
     Task<long> SaveCompanyAsync(long clientId, SaveCompanyRequest req, long userId);
     Task DeleteCompanyAsync(long clientId, long companyId);
-    Task SaveCompanyAddressAsync(long companyId, SaveAddressRequest req);
-    Task SaveCompanyContactAsync(long companyId, SaveContactRequest req);
-    Task<List<ProductAccessDto>> GetProductAccessAsync(long companyId);
-    Task SaveProductAccessAsync(long companyId, SaveProductAccessRequest req);
+    Task SaveCompanyAddressAsync(long clientId, long companyId, SaveAddressRequest req);
+    Task SaveCompanyContactAsync(long clientId, long companyId, SaveContactRequest req);
+    Task<List<ProductAccessDto>> GetProductAccessAsync(long clientId, long companyId);
+    Task SaveProductAccessAsync(long clientId, long companyId, SaveProductAccessRequest req);
+    Task DeleteProductAccessAsync(long clientId, long companyId, long productId);
     Task<List<ProductDto>> GetAllProductsAsync();
 }

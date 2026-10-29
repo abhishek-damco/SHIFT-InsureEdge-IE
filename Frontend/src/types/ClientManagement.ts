@@ -75,6 +75,7 @@ export interface CompanyDto {
   legalAddress?: AddressDto;
   mailingAddress?: AddressDto;
   primaryContact?: ContactDto;
+  secondaryContacts: ContactDto[];
   createdOn: string;
   updatedOn?: string;
 }
@@ -260,6 +261,7 @@ export interface SaveCompanyRequest {
   legalAddress?: SaveAddressRequest;
   mailingAddress?: SaveAddressRequest;
   primaryContact?: SaveContactRequest;
+  secondaryContacts?: SaveContactRequest[];
 }
 
 export interface SaveProductAccessRequest {

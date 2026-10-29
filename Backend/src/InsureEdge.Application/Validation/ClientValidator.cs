@@ -13,6 +13,9 @@ public static partial class ClientValidator
     public static readonly string[] Countries = [UnitedStates, Canada];
     public static readonly string[] CompanyTypes = ["MGA", "Insurance Carrier"];
     public static readonly string[] OfficeTypes = ["Branch", "Regional"];
+    public const int BusinessDescriptionMinLength = 5;
+    public const int BusinessDescriptionMaxLength = 1000;
+    public const string BusinessDescriptionLengthError = "Business Description should be in between 5 to 1000 characters";
 
     public static string Required(string label) => $"Provide {label} to continue";
     public static string Invalid(string label) => $"Provide valid {label} to continue";
@@ -44,6 +47,14 @@ public static partial class ClientValidator
 
     public static bool IsValidFederalTaxId(string? id) => id != null && FederalTaxId().IsMatch(id);
 
+    public static string? ValidateBusinessDescription(string? value)
+    {
+        var description = value?.Trim() ?? "";
+        return description.Length == 0 || description.Length is >= BusinessDescriptionMinLength and <= BusinessDescriptionMaxLength
+            ? null
+            : BusinessDescriptionLengthError;
+    }
+
     public static string? ValidateInfo(SaveClientInfoRequest r)
     {
         var name = r.CompanyName?.Trim() ?? "";
@@ -68,9 +79,53 @@ public static partial class ClientValidator
         if (!Blank(r.TelephoneNumber) && !IsValidPhone(r.TelephoneNumber)) return Invalid("Telephone");
         if (!IsValidExtension(r.Extension)) return Invalid("Extension");
         if (r.ClientUrl?.Length > 50) return Invalid("Client URL");
-        if (!Blank(r.BusinessDescription) && r.BusinessDescription!.Trim().Length is < 5 or > 1000)
-            return "Business Description should be in between 5 to 1000 characters";
+        if (ValidateBusinessDescription(r.BusinessDescription) is { } descriptionError) return descriptionError;
         return null;
+    }
+
+    public static string? ValidateCompany(SaveCompanyRequest r)
+    {
+        var name = r.CompanyName?.Trim() ?? "";
+        if (name.Length == 0) return Required("Company Name");
+        if (name.Length > 75) return Invalid("Company Name");
+        if (r.Id is null && Blank(r.LogoBase64)) return Required("Company Logo");
+        if (!Blank(r.LogoBase64) && !IsValidCompanyLogo(r.LogoBase64!, r.LogoContentType))
+            return Invalid("Company Logo");
+        if (Blank(r.DomicileCountry)) return Required("Domicile Country");
+        if (!Countries.Contains(r.DomicileCountry)) return Invalid("Domicile Country");
+        if (Blank(r.StateOfDomicile)) return Required(r.DomicileCountry == Canada ? "Province of Domicile" : "State of Domicile");
+        if (Blank(r.NaicCode)) return Required("NAIC Code");
+        if (!r.NaicCode!.All(char.IsAsciiDigit)) return Invalid("NAIC Code");
+        if (Blank(r.FederalTaxId)) return Required("Federal Tax ID");
+        if (!IsValidFederalTaxId(r.FederalTaxId)) return Invalid("Federal Tax ID");
+        if (!Blank(r.EmailId) && !IsValidEmail(r.EmailId)) return Invalid("Email ID");
+        if (!Blank(r.TelephoneNumber) && !IsValidPhone(r.TelephoneNumber)) return Invalid("Telephone");
+        if (!IsValidExtension(r.Extension)) return Invalid("Extension");
+        if (ValidateBusinessDescription(r.BusinessDescription) is { } descriptionError) return descriptionError;
+        if (r.LegalAddress is null) return Required("Home Office / Legal Address");
+        if (ValidateAddress(r.LegalAddress) is { } legalError) return legalError;
+        if (r.MailingAddress is null) return Required("Mailing Address");
+        if (ValidateAddress(r.MailingAddress) is { } mailingError) return mailingError;
+        if (r.PrimaryContact is null) return Required("Primary Contact");
+        if (Blank(r.PrimaryContact.TelephoneNumber)) return Required("Telephone Number");
+        if (ValidateContact(r.PrimaryContact) is { } contactError) return contactError;
+        foreach (var contact in r.SecondaryContacts ?? [])
+        {
+            if (Blank(contact.TelephoneNumber)) return Required("Telephone Number");
+            if (ValidateContact(contact) is { } secondaryError) return secondaryError;
+        }
+        return null;
+    }
+
+    private static bool IsValidCompanyLogo(string base64, string? contentType)
+    {
+        if (contentType is not ("image/png" or "image/jpeg" or "image/gif")) return false;
+        try
+        {
+            var bytes = Convert.FromBase64String(base64).Length;
+            return bytes is >= 10 * 1024 and <= 10 * 1024 * 1024;
+        }
+        catch (FormatException) { return false; }
     }
 
     public static string? ValidateAddress(SaveAddressRequest r) =>

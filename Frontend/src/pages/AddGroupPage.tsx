@@ -1,7 +1,7 @@
 // US-002: Add new group — 3-panel form: Group Info + Members + Permission Matrix
 // VR-001..VR-004: inline validation before submit
 // BR-001: GroupCode previewed on create and authoritatively assigned by backend
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import GroupInformationPanel, { type GroupInfoValues } from '../components/GroupForm/GroupInformationPanel';
@@ -26,7 +26,6 @@ export default function AddGroupPage() {
   const [memberIds, setMemberIds] = useState<number[]>([]);
   const [permissions, setPermissions] = useState<ScreenPermissionSaveDto[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   const { data: users = [] } = useQuery({
@@ -69,11 +68,17 @@ export default function AddGroupPage() {
     return Object.keys(errs).length === 0;
   };
 
-  // QA UGM-16: after the first Create attempt, re-check on every change so each error
-  // clears as soon as its field is valid.
-  useEffect(() => {
-    if (submitted) setInfoErrors(validateGroupInfo(info));
-  }, [info, submitted]);
+  const handleInfoChange = (field: keyof GroupInfoValues, value: string | number | boolean) => {
+    setInfo(prev => ({ ...prev, [field]: value }));
+    // Validation is submit-driven. Clear a previous message while the user edits,
+    // then validate the current value only when Save is clicked again.
+    setInfoErrors(prev => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   // QA UGM-18: only warn on Cancel when something has been entered.
   const isDirty = !!(info.groupName.trim() || info.groupLeader || info.groupEmailId.trim() || info.groupDesc.trim()
@@ -86,7 +91,6 @@ export default function AddGroupPage() {
   };
 
   const handleSubmit = async () => {
-    setSubmitted(true);
     if (!validate()) return;
     setSubmitError(null);
     try {
@@ -130,7 +134,7 @@ export default function AddGroupPage() {
       <div className="app-section-grid add-group-top-grid">
         <GroupInformationPanel
           values={info}
-          onChange={(field, value) => setInfo(prev => ({ ...prev, [field]: value }))}
+          onChange={handleInfoChange}
           errors={infoErrors}
           users={users}
           groupCode={nextCode?.groupCode}
@@ -164,7 +168,7 @@ export default function AddGroupPage() {
           onClick={handleSubmit}
           disabled={createGroup.isPending}
         >
-          {createGroup.isPending ? 'Creating...' : 'Create Group'}
+          {createGroup.isPending ? 'Saving...' : 'Save'}
         </button>
       </div>
 

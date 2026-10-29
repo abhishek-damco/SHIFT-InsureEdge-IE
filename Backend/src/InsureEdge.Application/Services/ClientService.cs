@@ -40,16 +40,19 @@ public class ClientService(IClientRepository repo, ICurrentTenantService tenant)
         => repo.DeleteCompanyAsync(tenant.ClientId, companyId);
 
     public Task SaveCompanyAddressAsync(long companyId, SaveAddressRequest req)
-        => repo.SaveCompanyAddressAsync(companyId, req);
+        => repo.SaveCompanyAddressAsync(tenant.ClientId, companyId, req);
 
     public Task SaveCompanyContactAsync(long companyId, SaveContactRequest req)
-        => repo.SaveCompanyContactAsync(companyId, req);
+        => repo.SaveCompanyContactAsync(tenant.ClientId, companyId, req);
 
     public Task<List<ProductAccessDto>> GetProductAccessAsync(long companyId)
-        => repo.GetProductAccessAsync(companyId);
+        => repo.GetProductAccessAsync(tenant.ClientId, companyId);
 
     public Task SaveProductAccessAsync(long companyId, SaveProductAccessRequest req)
-        => repo.SaveProductAccessAsync(companyId, req);
+        => repo.SaveProductAccessAsync(tenant.ClientId, companyId, req);
+
+    public Task DeleteProductAccessAsync(long companyId, long productId)
+        => repo.DeleteProductAccessAsync(tenant.ClientId, companyId, productId);
 
     public Task<List<ProductDto>> GetAllProductsAsync()
         => repo.GetAllProductsAsync();

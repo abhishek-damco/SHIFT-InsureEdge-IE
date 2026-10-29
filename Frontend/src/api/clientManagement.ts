@@ -72,6 +72,12 @@ export const clientManagementApi = {
   saveProductAccess: (companyId: number, req: SaveProductAccessRequest) =>
     api.put(`/clients/me/companies/${companyId}/products`, req),
 
+  deleteProductAccess: (companyId: number, productId: number) =>
+    api.delete(`/clients/me/companies/${companyId}/products/${productId}`),
+
+  getJurisdictionStates: () =>
+    api.get<Array<{ code: string; name: string }>>('/reference/states', { params: { country_code: 'US' } }).then(r => r.data),
+
   getAllProducts: () =>
     api.get<ProductDto[]>('/clients/reference/products').then(r => r.data),
 };

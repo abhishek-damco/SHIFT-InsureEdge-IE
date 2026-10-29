@@ -88,6 +88,13 @@ test('North American telephone values normalize and format without duplicating +
   assert.equal(fields.isValidPhone('+12 740 283-3333'), false);
 });
 
+test('US ZIP Code input is limited and formatted as ZIP+4', () => {
+  assert.equal(fields.formatUsZipInput('555555555'), '55555-5555');
+  assert.equal(fields.formatUsZipInput('55555-5555'), '55555-5555');
+  assert.equal(fields.formatUsZipInput('55555555599'), '55555-5555');
+  assert.equal(fields.formatUsZipInput('5555'), '5555');
+});
+
 test('Client contact validation rejects equal telephone numbers after normalization', () => {
   const errors = validation.validateContact({
     name: 'Alex Mercer', title: 'Admin', emailId: 'alex@example.com',
@@ -104,6 +111,16 @@ test('Year Business Started remains optional and validates a selected four-digit
   assert.equal(validation.validateClientInfo(base, true).yearBusinessStarted, undefined);
   assert.equal(validation.validateClientInfo({ ...base, yearBusinessStarted: '1993' }, true).yearBusinessStarted, undefined);
   assert.ok(validation.validateClientInfo({ ...base, yearBusinessStarted: '1599' }, true).yearBusinessStarted);
+});
+
+test('Business Description is optional and enforces 5 to 1000 trimmed characters when populated', () => {
+  const message = 'Business Description should be in between 5 to 1000 characters';
+  assert.equal(validation.validateBusinessDescription(''), undefined);
+  assert.equal(validation.validateBusinessDescription('   '), undefined);
+  assert.equal(validation.validateBusinessDescription('four'), message);
+  assert.equal(validation.validateBusinessDescription('five!'), undefined);
+  assert.equal(validation.validateBusinessDescription('a'.repeat(1000)), undefined);
+  assert.equal(validation.validateBusinessDescription('a'.repeat(1001)), message);
 });
 
 test('Year picker exposes the #### input, opens from its calendar button, and selects a year directly', () => {
@@ -149,4 +166,65 @@ test('Phone input defaults to US, offers Canada, limits national digits, and for
   nodes(phoneView.tree).find(node => node.type === 'input').props.onChange({ target: { value: '74028333339' } });
   assert.equal(phone, '7402833333');
   assert.equal(components.formatPhoneWithFlag('+1 (740) 283-3333', components.PHONE_CC_CA), '+1 (740) 283-3333');
+});
+
+test('New company validation keeps the draft and reports every documented mandatory area', () => {
+  const errors = validation.validateCompanyForm({
+    companyName: '', domicileCountry: 'United States', stateOfDomicile: '', naicCode: '',
+    federalTaxId: '', legalAddress: { addressType: 'Legal', isManual: false },
+    mailingAddress: { addressType: 'Mailing', isManual: false },
+    primaryContact: {}, secondaryContacts: [],
+  });
+  assert.equal(errors.logo, 'Provide Company Logo to continue');
+  assert.equal(errors.companyName, 'Provide Company Name to continue');
+  assert.equal(errors.stateOfDomicile, 'Provide State of Domicile to continue');
+  assert.equal(errors.naicCode, 'Provide NAIC Code to continue');
+  assert.equal(errors.federalTaxId, 'Provide Federal Tax ID to continue');
+  assert.equal(errors['legal.addressLine1'], 'Provide Address Line 1 to continue');
+  assert.equal(errors['mailing.addressLine1'], 'Provide Address Line 1 to continue');
+  assert.equal(errors['primary.telephoneNumber'], 'Provide Telephone Number to continue');
+});
+
+test('Add Contacts preserves entered content and allows only one unfinished secondary contact', () => {
+  const components = load('pages/ClientManagement/ClientFormFields.tsx');
+  const primary = {
+    name: 'Alex Mercer', title: 'Administrator', emailId: 'alex@example.com',
+    telephoneNumber: '5551234567', telephoneNumberCc: '+1', altTelephoneNumber: '', altTelephoneNumberCc: '+1',
+  };
+  let secondaries = [];
+  const props = {
+    primary, secondaries, onPrimaryChange() {}, onSecondariesChange: next => { secondaries = next; }, errors: {}, cols: 3,
+  };
+  let view = render(components.ContactListEditor, props);
+  let add = nodes(view.tree).find(node => node.type === 'button' && text(node).includes('Add Contacts'));
+  assert.equal(add.props.disabled, false);
+  add.props.onClick();
+  assert.equal(secondaries.length, 1);
+  assert.equal(primary.name, 'Alex Mercer');
+
+  view = render(components.ContactListEditor, { ...props, secondaries });
+  add = nodes(view.tree).find(node => node.type === 'button' && text(node).includes('Add Contacts'));
+  assert.equal(add.props.disabled, true);
+
+  secondaries = [{ ...primary, name: 'Jamie Rivera', emailId: 'jamie@example.com' }];
+  view = render(components.ContactListEditor, { ...props, secondaries });
+  add = nodes(view.tree).find(node => node.type === 'button' && text(node).includes('Add Contacts'));
+  assert.equal(add.props.disabled, false);
+  add.props.onClick();
+  assert.equal(secondaries.length, 2);
+  assert.equal(primary.emailId, 'alex@example.com');
+});
+
+test('Company product workflow uses explicit editing and the documented jurisdiction contract', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/pages/ClientManagement/ClientCompanySections.tsx'), 'utf8');
+  const api = fs.readFileSync(path.resolve(__dirname, '../src/api/clientManagement.ts'), 'utf8');
+  assert.match(source, /Please select LOB to view the subproducts/);
+  assert.match(source, /Set Jurisdiction of Line of Business\/Sub-Products/);
+  assert.match(source, /All Access/);
+  assert.match(source, /Total Line of Business Selected/);
+  assert.match(source, /onClick=\{\(\) => saveAccess\(selected, \[\.\.\.draftIds\]\)\}/);
+  assert.match(source, /getJurisdictionStates\(\)/);
+  assert.doesNotMatch(source, /\['AL','Alabama'\]/);
+  assert.match(api, /country_code: 'US'/);
+  assert.match(api, /deleteProductAccess/);
 });

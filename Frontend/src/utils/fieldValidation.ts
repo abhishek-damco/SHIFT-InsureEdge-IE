@@ -40,6 +40,12 @@ export function formatPhone(raw?: string | null): string {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
+// Masks a US ZIP Code as 12345-6789 while the user types.
+export function formatUsZipInput(raw: string): string {
+  const digits = digitsOnly(raw, 9);
+  return digits.length <= 5 ? digits : `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
 // Masks typed input as MM-DD-YYYY.
 export function formatDateInput(raw: string): string {
   const d = digitsOnly(raw, 8);

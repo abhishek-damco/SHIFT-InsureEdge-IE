@@ -196,14 +196,14 @@ export function ContactFields({ value, onChange, errors = {}, disabled, cols = 3
       <Field label="Email ID" required error={errors.emailId}>
         <TextInput value={value.emailId} onChange={v => up('emailId', v)} maxLength={50} error={errors.emailId} disabled={disabled} />
       </Field>
-      <Field label="Telephone" error={errors.telephoneNumber}>
+      <Field label="Telephone Number" required error={errors.telephoneNumber}>
         <PhoneInput value={value.telephoneNumber} cc={value.telephoneNumberCc} disabled={disabled} error={errors.telephoneNumber}
           onChange={v => up('telephoneNumber', v)} onCcChange={v => up('telephoneNumberCc', v)} />
       </Field>
       <Field label="Extension" error={errors.extension}>
         <ExtensionInput value={value.extension} onChange={v => up('extension', v)} error={errors.extension} disabled={disabled} />
       </Field>
-      <Field label="Alternative Telephone" error={errors.altTelephoneNumber}>
+      <Field label="Alternative Telephone Number" error={errors.altTelephoneNumber}>
         <PhoneInput value={value.altTelephoneNumber} cc={value.altTelephoneNumberCc} disabled={disabled} error={errors.altTelephoneNumber}
           onChange={v => up('altTelephoneNumber', v)} onCcChange={v => up('altTelephoneNumberCc', v)} />
       </Field>
@@ -231,8 +231,11 @@ export function ContactListEditor({ primary, secondaries, onPrimaryChange, onSec
   cols?: 2 | 3;
 }) {
   const [confirmIndex, setConfirmIndex] = useState<number | null>(null);
-  // Add Contact unlocks once every mandatory Primary Contact field is filled in validly.
-  const canAdd = !disabled && Object.keys(validateContact(primary)).length === 0;
+  // The source UI permits only one unfinished contact at a time. Reopening Add
+  // Contacts must append a block without resetting the already-entered contacts.
+  const canAdd = !disabled
+    && Object.keys(validateContact(primary)).length === 0
+    && secondaries.every(contact => Object.keys(validateContact(contact)).length === 0);
 
   const remove = (i: number) => onSecondariesChange(secondaries.filter((_, j) => j !== i));
   const requestRemove = (i: number) => (isContactEmpty(secondaries[i]) ? remove(i) : setConfirmIndex(i));
@@ -260,10 +263,10 @@ export function ContactListEditor({ primary, secondaries, onPrimaryChange, onSec
       {!disabled && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" className="btn-add-contacts" disabled={!canAdd}
-            title={canAdd ? undefined : 'Fill in the Primary Contact first'}
+            title={canAdd ? undefined : 'Complete the visible contact details first'}
             onClick={() => onSecondariesChange([...secondaries, emptyContact()])}
-            style={{ height: 32, padding: '0 14px', borderRadius: 3, fontSize: 13, cursor: canAdd ? 'pointer' : 'not-allowed', opacity: canAdd ? 1 : 0.5 }}>
-            + Add Contact
+            style={{ height: 28, minWidth: 112, padding: '0 12px', borderRadius: 2, fontSize: 11, cursor: canAdd ? 'pointer' : 'not-allowed', opacity: canAdd ? 1 : 0.55 }}>
+            <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 0, marginRight: 5, verticalAlign: -1 }}>＋</span>Add Contacts
           </button>
         </div>
       )}

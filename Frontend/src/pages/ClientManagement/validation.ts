@@ -2,20 +2,23 @@
 // Client Management field rules (QA report §2 / §5). Mirrors Backend ClientValidator.
 // Generic rules live in utils/fieldValidation; this file adds the Client-specific ones.
 import { CANADA_PROVINCES, US_STATES } from '../DistributionManagement/IntermediaryReferenceData';
-import type { SaveClientInfoRequest, SaveContactRequest } from '../../types/ClientManagement';
+import type { SaveClientInfoRequest, SaveCompanyRequest, SaveContactRequest } from '../../types/ClientManagement';
 import {
-  CANADA, type Errors, checkPhonesDiffer, digitsOnly, invalid, isBlank as blank, isValidEmail, isValidName, isValidPhone,
+  CANADA, type Errors, checkPhonesDiffer, digitsOnly, formatUsZipInput, invalid, isBlank as blank, isValidEmail, isValidName, isValidPhone,
   isValidZip, normalizeNorthAmericanPhone, required, stateLabel, zipLabel,
 } from '../../utils/fieldValidation';
 
 export {
-  CANADA, type Errors, apiErrorMessage, digitsOnly, formatPhone, invalid, isValidEmail, isValidName,
+  CANADA, type Errors, apiErrorMessage, digitsOnly, formatPhone, formatUsZipInput, invalid, isValidEmail, isValidName,
   isValidPhone, isValidZip, normalizeNorthAmericanPhone, required, stateLabel, todayMmDdYyyy, zipLabel,
 } from '../../utils/fieldValidation';
 
 export const COUNTRIES = ['United States', CANADA] as const;
 export const COMPANY_TYPES = ['MGA', 'Insurance Carrier'] as const;
 export const OFFICE_TYPES = ['Branch', 'Regional'] as const;
+export const BUSINESS_DESCRIPTION_MIN = 5;
+export const BUSINESS_DESCRIPTION_MAX = 1000;
+export const BUSINESS_DESCRIPTION_LENGTH_ERROR = 'Business Description should be in between 5 to 1000 characters';
 export const EST_DWP_OPTIONS = ['Below 1M', '1–99M', '100–250M', '250M+'] as const;
 export { US_STATES };
 
@@ -25,6 +28,14 @@ export const regionOptions = (country?: string): readonly string[] =>
 export function formatFederalTaxId(raw: string): string {
   const d = digitsOnly(raw, 9);
   return d.length <= 2 ? d : `${d.slice(0, 2)}-${d.slice(2)}`;
+}
+
+export function validateBusinessDescription(value?: string | null): string | undefined {
+  const description = value?.trim() ?? '';
+  if (!description) return undefined;
+  return description.length < BUSINESS_DESCRIPTION_MIN || description.length > BUSINESS_DESCRIPTION_MAX
+    ? BUSINESS_DESCRIPTION_LENGTH_ERROR
+    : undefined;
 }
 
 // ── Section validators ─────────────────────────────────────────────────────────
@@ -56,9 +67,8 @@ export function validateClientInfo(f: SaveClientInfoRequest, hasLogo: boolean): 
   if (!blank(f.telephoneNumber) && !isValidPhone(f.telephoneNumber!)) e.telephoneNumber = invalid('Telephone');
   if (f.extension != null && !/^\d{1,6}$/.test(String(f.extension))) e.extension = invalid('Extension');
 
-  const desc = f.businessDescription?.trim() ?? '';
-  if (desc && (desc.length < 5 || desc.length > 1000))
-    e.businessDescription = 'Business Description should be in between 5 to 1000 characters';
+  const businessDescriptionError = validateBusinessDescription(f.businessDescription);
+  if (businessDescriptionError) e.businessDescription = businessDescriptionError;
   return e;
 }
 
@@ -87,11 +97,36 @@ export function validateContact(c: SaveContactRequest): Errors {
   if (blank(c.title)) e.title = required('Title');
   if (blank(c.emailId)) e.emailId = required('Email ID');
   else if (!isValidEmail(c.emailId!)) e.emailId = invalid('Email ID');
-  if (!blank(c.telephoneNumber) && !isValidPhone(c.telephoneNumber!)) e.telephoneNumber = invalid('Telephone');
+  if (blank(c.telephoneNumber)) e.telephoneNumber = required('Telephone Number');
+  else if (!isValidPhone(c.telephoneNumber!)) e.telephoneNumber = invalid('Telephone');
   if (c.extension != null && !/^\d{1,6}$/.test(String(c.extension))) e.extension = invalid('Extension');
   if (!blank(c.altTelephoneNumber) && !isValidPhone(c.altTelephoneNumber!)) e.altTelephoneNumber = invalid('Alternative Telephone');
   checkPhonesDiffer(e, 'telephoneNumber', 'altTelephoneNumber', c.telephoneNumber, c.altTelephoneNumber);
   return e;
+}
+
+export function validateCompanyForm(form: SaveCompanyRequest, hasExistingLogo = false): Errors {
+  const errors: Errors = {};
+  if (!form.logoBase64 && !hasExistingLogo) errors.logo = required('Company Logo');
+  if (blank(form.companyName)) errors.companyName = required('Company Name');
+  else if (form.companyName.length > 75) errors.companyName = invalid('Company Name');
+  if (blank(form.domicileCountry)) errors.domicileCountry = required('Domicile Country');
+  if (blank(form.stateOfDomicile)) errors.stateOfDomicile = required(`${form.domicileCountry === CANADA ? 'Province' : 'State'} of Domicile`);
+  if (blank(form.naicCode)) errors.naicCode = required('NAIC Code');
+  if (blank(form.federalTaxId)) errors.federalTaxId = required('Federal Tax ID');
+  else if (!/^\d{2}-\d{7}$/.test(form.federalTaxId!)) errors.federalTaxId = invalid('Federal Tax ID');
+  const description = validateBusinessDescription(form.businessDescription);
+  if (description) errors.businessDescription = description;
+  for (const [key, value] of Object.entries(validateAddress(form.legalAddress ?? {}))) errors[`legal.${key}`] = value;
+  if (!form.mailingAddress?.isSameAsLegal) {
+    for (const [key, value] of Object.entries(validateAddress(form.mailingAddress ?? {}))) errors[`mailing.${key}`] = value;
+  }
+  const contacts = [form.primaryContact ?? {}, ...(form.secondaryContacts ?? [])];
+  contacts.forEach((contact, index) => {
+    const prefix = index === 0 ? 'primary.' : `secondary.${index - 1}.`;
+    for (const [key, value] of Object.entries(validateContact(contact))) errors[`${prefix}${key}`] = value;
+  });
+  return errors;
 }
 
 export function isContactEmpty(c: SaveContactRequest): boolean {

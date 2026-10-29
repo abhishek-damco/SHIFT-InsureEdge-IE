@@ -296,6 +296,7 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
     // ── Company ────────────────────────────────────────────────────────────────
     public async Task<long> SaveCompanyAsync(long clientId, SaveCompanyRequest req, long userId)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync();
         ClientCompany company;
         if (req.Id.HasValue)
         {
@@ -309,11 +310,22 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         }
         else
         {
-            var seq = await db.Database.SqlQueryRaw<long>("SELECT nextval('company_code_seq') AS \"Value\"").FirstAsync();
+            // Serialize per-client numbering so two concurrent creates cannot receive the same code.
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({clientId})");
+            var existingCodes = await db.ClientCompanies
+                .Where(c => c.ClientId == clientId)
+                .Select(c => c.CompanyCode)
+                .ToListAsync();
+            var usedNumbers = existingCodes
+                .Select(code => long.TryParse(code, out var number) ? number : 0)
+                .Where(number => number > 0)
+                .ToHashSet();
+            var companyNumber = existingCodes.Count + 1L;
+            while (usedNumbers.Contains(companyNumber)) companyNumber++;
             company = new ClientCompany
             {
                 ClientId = clientId,
-                CompanyCode = seq.ToString("D5"),
+                CompanyCode = companyNumber.ToString("D5"),
                 CreatedBy = userId,
                 CreatedOn = DateTimeOffset.UtcNow
             };
@@ -339,10 +351,37 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         }
         await db.SaveChangesAsync();
 
-        if (req.LegalAddress != null) await SaveCompanyAddressAsync(company.Id, req.LegalAddress with { AddressType = "Legal" });
-        if (req.MailingAddress != null) await SaveCompanyAddressAsync(company.Id, req.MailingAddress with { AddressType = "Mailing" });
-        if (req.PrimaryContact != null) await SaveCompanyContactAsync(company.Id, req.PrimaryContact);
+        if (req.LegalAddress != null) await SaveCompanyAddressInternalAsync(company.Id, req.LegalAddress with { AddressType = "Legal" });
+        if (req.MailingAddress != null) await SaveCompanyAddressInternalAsync(company.Id, req.MailingAddress with { AddressType = "Mailing" });
+        if (req.PrimaryContact != null) await SaveCompanyContactInternalAsync(company.Id, req.PrimaryContact);
 
+        if (req.SecondaryContacts is { } secondary)
+        {
+            var oldSecondary = await db.CompanyContacts
+                .Where(c => c.CompanyId == company.Id && c.ContactType != "Primary")
+                .ToListAsync();
+            db.CompanyContacts.RemoveRange(oldSecondary);
+            for (var i = 0; i < secondary.Count; i++)
+            {
+                var item = secondary[i];
+                db.CompanyContacts.Add(new CompanyContact
+                {
+                    CompanyId = company.Id,
+                    ContactType = $"Secondary{i + 1}",
+                    Name = item.Name,
+                    Suffix = item.Suffix,
+                    Title = item.Title,
+                    EmailId = item.EmailId,
+                    TelephoneNumber = NormalizeOptionalPhone(item.TelephoneNumber),
+                    TelephoneNumberCc = PhoneCountryCode(item.TelephoneNumber, item.TelephoneNumberCc),
+                    Extension = item.Extension,
+                    AltTelephoneNumber = NormalizeOptionalPhone(item.AltTelephoneNumber),
+                    AltTelephoneNumberCc = PhoneCountryCode(item.AltTelephoneNumber, item.AltTelephoneNumberCc)
+                });
+            }
+        }
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return company.Id;
     }
 
@@ -355,7 +394,13 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         await db.SaveChangesAsync();
     }
 
-    public async Task SaveCompanyAddressAsync(long companyId, SaveAddressRequest req)
+    public async Task SaveCompanyAddressAsync(long clientId, long companyId, SaveAddressRequest req)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        await SaveCompanyAddressInternalAsync(companyId, req);
+    }
+
+    private async Task SaveCompanyAddressInternalAsync(long companyId, SaveAddressRequest req)
     {
         var addr = await db.CompanyAddresses
             .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.AddressType == req.AddressType);
@@ -379,7 +424,13 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         await db.SaveChangesAsync();
     }
 
-    public async Task SaveCompanyContactAsync(long companyId, SaveContactRequest req)
+    public async Task SaveCompanyContactAsync(long clientId, long companyId, SaveContactRequest req)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        await SaveCompanyContactInternalAsync(companyId, req);
+    }
+
+    private async Task SaveCompanyContactInternalAsync(long companyId, SaveContactRequest req)
     {
         var ct = await db.CompanyContacts
             .FirstOrDefaultAsync(c => c.CompanyId == companyId && c.ContactType == "Primary");
@@ -415,8 +466,9 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
             .Select(p => new ProductDto(p.Id, p.ProductName, p.Category))
             .ToListAsync();
 
-    public async Task<List<ProductAccessDto>> GetProductAccessAsync(long companyId)
+    public async Task<List<ProductAccessDto>> GetProductAccessAsync(long clientId, long companyId)
     {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
         var products = await db.InsuranceProducts
             .Include(p => p.SubProducts)
             .Where(p => p.IsActive)
@@ -444,8 +496,32 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         }).ToList();
     }
 
-    public async Task SaveProductAccessAsync(long companyId, SaveProductAccessRequest req)
+    public async Task SaveProductAccessAsync(long clientId, long companyId, SaveProductAccessRequest req)
     {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        if (req.SubProductIds is null || req.Jurisdictions is null)
+            throw new ArgumentException("Sub-products and jurisdictions are required.");
+        var product = await db.InsuranceProducts
+            .Include(p => p.SubProducts)
+            .FirstOrDefaultAsync(p => p.Id == req.ProductId && p.IsActive)
+            ?? throw new KeyNotFoundException("Product not found.");
+        var validSubProductIds = product.SubProducts.Select(s => s.Id).ToHashSet();
+        if (req.SubProductIds.Distinct().Any(id => !validSubProductIds.Contains(id)))
+            throw new ArgumentException("One or more sub-products are invalid for the selected product.");
+        if (req.Jurisdictions.GroupBy(j => j.StateCode, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+            throw new ArgumentException("Duplicate jurisdictions are not allowed.");
+        var requestedCodes = req.Jurisdictions
+            .Select(j => j.StateCode.Trim().ToUpperInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (requestedCodes.Count > 0)
+        {
+            var knownCodes = (await db.Database
+                .SqlQueryRaw<string>("SELECT code AS \"Value\" FROM state WHERE country_code = 'US'")
+                .ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!requestedCodes.IsSubsetOf(knownCodes))
+                throw new ArgumentException("One or more jurisdictions are invalid.");
+        }
         var access = await db.CompanyProductAccess
             .Include(a => a.SelectedSubProducts)
             .Include(a => a.Jurisdictions)
@@ -466,9 +542,30 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         // Replace jurisdictions
         db.CompanyProductJurisdictions.RemoveRange(access.Jurisdictions);
         foreach (var j in req.Jurisdictions)
-            db.CompanyProductJurisdictions.Add(new CompanyProductJurisdiction { AccessId = access.Id, StateCode = j.StateCode, StateName = j.StateName });
+            db.CompanyProductJurisdictions.Add(new CompanyProductJurisdiction
+            {
+                AccessId = access.Id,
+                StateCode = j.StateCode.Trim().ToUpperInvariant(),
+                StateName = j.StateName.Trim()
+            });
 
         await db.SaveChangesAsync();
+    }
+
+    public async Task DeleteProductAccessAsync(long clientId, long companyId, long productId)
+    {
+        await EnsureCompanyOwnedAsync(clientId, companyId);
+        var access = await db.CompanyProductAccess
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.ProductId == productId)
+            ?? throw new KeyNotFoundException("Product assignment not found.");
+        db.CompanyProductAccess.Remove(access);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task EnsureCompanyOwnedAsync(long clientId, long companyId)
+    {
+        if (!await db.ClientCompanies.AnyAsync(c => c.Id == companyId && c.ClientId == clientId))
+            throw new KeyNotFoundException("Company not found.");
     }
 
     // ── Mapping helpers ────────────────────────────────────────────────────────
@@ -476,9 +573,15 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         a.Id, a.AddressType, a.AddressLine1, a.AddressLine2,
         a.Country, a.State, a.City, a.County, a.ZipCode, a.Latitude, a.Longitude, a.IsManual, a.IsSameAsLegal);
 
-    private static AddressDto? MapCompanyAddress(CompanyAddress? a) => a == null ? null : new AddressDto(
+    private static AddressDto? MapCompanyAddress(CompanyAddress? a, bool isSameAsLegal = false) => a == null ? null : new AddressDto(
         a.Id, a.AddressType, a.AddressLine1, a.AddressLine2,
-        a.Country, a.State, a.City, a.County, a.ZipCode, a.Latitude, a.Longitude, a.IsManual);
+        a.Country, a.State, a.City, a.County, a.ZipCode, a.Latitude, a.Longitude, a.IsManual, isSameAsLegal);
+
+    private static bool SameAddress(CompanyAddress? left, CompanyAddress? right) => left != null && right != null
+        && left.AddressLine1 == right.AddressLine1 && left.AddressLine2 == right.AddressLine2
+        && left.Country == right.Country && left.State == right.State && left.City == right.City
+        && left.County == right.County && left.ZipCode == right.ZipCode
+        && left.Latitude == right.Latitude && left.Longitude == right.Longitude;
 
     private static ContactDto? MapContact(ClientContact? c) => c == null ? null : new ContactDto(
         c.Id, c.ContactType, c.Name, c.Suffix, c.Title, c.EmailId,
@@ -505,6 +608,11 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
         var legal   = co.Addresses.FirstOrDefault(a => a.AddressType == "Legal");
         var mailing = co.Addresses.FirstOrDefault(a => a.AddressType == "Mailing");
         var contact = co.Contacts.FirstOrDefault(ct => ct.ContactType == "Primary");
+        var secondary = co.Contacts
+            .Where(ct => ct.ContactType != "Primary")
+            .OrderBy(ct => ct.ContactType)
+            .Select(ct => MapCompanyContact(ct)!)
+            .ToList();
         return new CompanyDto(
             co.Id, co.CompanyCode, co.CompanyName, co.Status,
             co.DomicileCountry, co.StateOfDomicile, co.NaicCode,
@@ -513,8 +621,9 @@ public class ClientRepository(InsureEdgeDbContext db) : IClientRepository
             co.LogoData != null ? Convert.ToBase64String(co.LogoData) : null,
             co.LogoContentType,
             MapCompanyAddress(legal),
-            MapCompanyAddress(mailing),
+            MapCompanyAddress(mailing, SameAddress(legal, mailing)),
             MapCompanyContact(contact),
+            secondary,
             co.CreatedOn.ToString("MM-dd-yyyy"),
             co.UpdatedOn?.ToString("MM-dd-yyyy")
         );

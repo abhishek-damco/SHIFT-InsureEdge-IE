@@ -95,6 +95,7 @@ public record CompanyDto(
     AddressDto? LegalAddress,
     AddressDto? MailingAddress,
     ContactDto? PrimaryContact,
+    List<ContactDto> SecondaryContacts,
     string CreatedOn,
     string? UpdatedOn
 );
@@ -256,7 +257,8 @@ public record SaveCompanyRequest(
     string? LogoFileName,
     SaveAddressRequest? LegalAddress,
     SaveAddressRequest? MailingAddress,
-    SaveContactRequest? PrimaryContact
+    SaveContactRequest? PrimaryContact,
+    List<SaveContactRequest>? SecondaryContacts = null
 );
 
 public record SaveProductAccessRequest(
